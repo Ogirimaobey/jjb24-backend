@@ -50,15 +50,23 @@ const createInvestmentTable = `
   );
 `;
 
+
+const alterTableUsers = `
+  ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE,
+  ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+`;
+
 const setupDatabase = async () => {
   try {
     console.log('Connecting to the database to set up table...');
     console.log('Creating tables...');
-
     const client = await pool.connect();
 
     await client.query(createUserTable);
     console.log('SUCCESS: "users" table created successfully (or already existed).');
+    await client.query(alterTableUsers);
+    console.log('SUCCESS: "users" table altered successfully (if needed).');
     await client.query(createTransactionsTable);
     console.log('SUCCESS: "transactions" table created successfully (or already existed).');
     await client.query(createDailyTaskTable);

@@ -5,7 +5,7 @@ import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 // const JWT_SECRET = process.env.JWT_SECRET || '';
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not defined in environment variables');
-console.log('JWT_SECRET loaded:', JWT_SECRET);
+// console.log('JWT_SECRET loaded:', JWT_SECRET);
 
 export const registerUser = async (data) => {
   const { fullName, phone, email, password, referralCode } = data;
@@ -38,15 +38,31 @@ export const registerUser = async (data) => {
 };
 
 
-export const loginUser = async ({ phone, password }) => {
-  const user = await findUserByPhone(phone);
-  if (!user) throw new Error('Invalid phone number or password.');
+export const loginUser = async (data) => {
+  const { phone, email, password } = data;
+
+  if ((!phone && !email) || !password) {
+    throw new Error('Please provide either phone or email, and password.');
+  }
+
+  let user = null;
+  if (phone) {
+    user = await findUserByPhone(phone);
+  } else if (email) {
+    user = await findUserByEmail(email);
+  }
+
+  if (!user) {
+    throw new Error('Invalid credentials. User not found.');
+  }
 
   const isPasswordCorrect = await comparePasswords(password, user.password_hash);
-  if (!isPasswordCorrect) throw new Error('Invalid phone number or password.');
+  if (!isPasswordCorrect) {
+    throw new Error('Invalid credentials. Wrong password.');
+  }
 
   const token = jwt.sign(
-    { id: user.id, phone: user.phone_number, is_admin: user.is_admin },
+    { id: user.id, phone: user.phone_number, email: user.email, is_admin: user.is_admin },
     JWT_SECRET,
     { expiresIn: '1d' }
   );
