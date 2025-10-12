@@ -1,13 +1,15 @@
-import pool from './database.js';
+import pool from './src/config/database.js';
 
 const createUserTable = `
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     full_name VARCHAR(100) NOT NULL,
     phone_number VARCHAR(20) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE,
     password_hash TEXT NOT NULL,
     referral_code_used VARCHAR(50),
     own_referral_code VARCHAR(50) UNIQUE,
+    is_admin BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW()
   );
 `;
@@ -48,24 +50,33 @@ const createInvestmentTable = `
   );
 `;
 
+
+const alterTableUsers = `
+  ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE,
+  ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+`;
+
 const setupDatabase = async () => {
   try {
     console.log('Connecting to the database to set up table...');
+    console.log('Creating tables...');
     const client = await pool.connect();
 
     await client.query(createUserTable);
     console.log('SUCCESS: "users" table created successfully (or already existed).');
-
+    await client.query(alterTableUsers);
+    console.log('SUCCESS: "users" table altered successfully (if needed).');
     await client.query(createTransactionsTable);
     console.log('SUCCESS: "transactions" table created successfully (or already existed).');
-
     await client.query(createDailyTaskTable);
     console.log('SUCCESS: "daily_tasks" table created successfully (or already existed).');
-
     await client.query(createInvestmentTable);
     console.log('SUCCESS: "investments" table created successfully (or already existed).');
 
     client.release();
+    console.log('Tables created/verified.');
+
 
   } catch (error) {
     console.error('Error setting up the database:', error);
