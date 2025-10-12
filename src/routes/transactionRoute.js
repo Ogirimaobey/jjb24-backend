@@ -18,17 +18,6 @@ router.post('/initialize', async (req, res) => {
   }
 });
 
-// router.post('/verify', async (req, res) => {
-//   try {
-//     await verifyPayment(req.body);
-//     res.status(200).send('Webhook received');
-//   } 
-//   catch (err) {
-//     console.error(err);
-//     res.status(400).send(err.message);
-//   }
-// });
-
 router.post("/verify", async (req, res) => {
   try {
     console.log("Webhook received:", req.body);
