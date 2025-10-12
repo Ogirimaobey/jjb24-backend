@@ -33,8 +33,8 @@ const vipPlans = {
 const allPlans = { ...jobPlans, ...vipPlans };
 
 // --- DATABASE CONNECTION ---
-const pool = new Pool({ user: 'mac', host: 'localhost', database: 'skate_winery', password: '', port: 5433, });
-pool.connect((err) => { if (err) { console.error('Error acquiring client', err.stack); } else { console.log('Successfully connected to the PostgreSQL database!'); } });
+const pool = new Pool({ user: 'mac', host: 'localhost', database: 'skate_winery', password: '', port: 5433 });
+pool.connect((err) => { if (err) { console.error('Error connecting to database:', err.stack); } else { console.log('Successfully connected to the PostgreSQL database!'); } });
 
 // --- MIDDLEWARE & AUTH ---
 app.use((req, res, next) => { res.setHeader('Access-Control-Allow-Private-Network', 'true'); next(); });
@@ -65,26 +65,27 @@ const authenticateAdmin = (req, res, next) => {
 
 // --- API ENDPOINTS ---
 app.post('/api/register', async (req, res) => {
-  const { fullName, phone, password, referralCode } = req.body;
-  if (!fullName || !phone || !password) { return res.status(400).json({ message: 'Please provide all required fields.' }); }
+  const { fullName, phone, password, email } = req.body;
+  if (!fullName || !phone || !password || !email) { return res.status(400).json({ message: 'All fields are required.' }); }
   try {
     const passwordHash = await bcrypt.hash(password, saltRounds);
     const ownReferralCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const insertQuery = `INSERT INTO users (full_name, phone_number, password_hash, referral_code_used, own_referral_code) VALUES ($1, $2, $3, $4, $5) RETURNING id;`;
-    const values = [fullName, phone, passwordHash, referralCode, ownReferralCode];
+    const insertQuery = `INSERT INTO users (full_name, phone_number, email, password_hash, own_referral_code) VALUES ($1, $2, $3, $4, $5) RETURNING id;`;
+    const values = [fullName, phone, email, passwordHash, ownReferralCode];
     await pool.query(insertQuery, values);
     res.status(201).json({ message: 'User registered successfully!' });
   } catch (error) {
-    if (error.code === '23505') { return res.status(409).json({ message: 'This phone number is already registered.' }); }
+    if (error.code === '23505') { return res.status(409).json({ message: 'This phone number or email is already registered.' }); }
+    console.error('Error during registration:', error);
     res.status(500).json({ message: 'An internal server error occurred.' });
   }
 });
 
 app.post('/api/login', async (req, res) => {
-    const { phone, password } = req.body;
-    if (!phone || !password) { return res.status(400).json({ message: 'Please provide phone and password.' }); }
+    const { loginIdentifier, password } = req.body;
+    if (!loginIdentifier || !password) { return res.status(400).json({ message: 'Please provide your email/phone and password.' }); }
     try {
-        const result = await pool.query('SELECT * FROM users WHERE phone_number = $1', [phone]);
+        const result = await pool.query('SELECT * FROM users WHERE phone_number = $1 OR email = $1', [loginIdentifier]);
         if (result.rows.length === 0) { return res.status(401).json({ message: 'Invalid credentials.' }); }
         const user = result.rows[0];
         const isMatch = await bcrypt.compare(password, user.password_hash);
@@ -96,7 +97,7 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/dashboard', authenticateToken, async (req, res) => {
     try {
-        const userResult = await pool.query('SELECT id, full_name, phone_number, own_referral_code FROM users WHERE id = $1', [req.user.userId]);
+        const userResult = await pool.query('SELECT id, full_name, phone_number, own_referral_code, balance FROM users WHERE id = $1', [req.user.userId]);
         if (userResult.rows.length === 0) { return res.status(404).json({ message: 'User not found.' }); }
         const investmentsResult = await pool.query('SELECT * FROM investments WHERE user_id = $1 ORDER BY start_date DESC', [req.user.userId]);
         res.status(200).json({ user: userResult.rows[0], plans: Object.values(jobPlans), investments: investmentsResult.rows });
@@ -177,19 +178,55 @@ app.get('/api/admin/stats', authenticateAdmin, async (req, res) => {
         const investmentCount = await pool.query('SELECT COUNT(*) FROM investments;');
         const totalInvested = await pool.query('SELECT SUM(investment_amount) FROM investments;');
         const recentUsers = await pool.query('SELECT full_name, phone_number, created_at FROM users ORDER BY created_at DESC LIMIT 5;');
-        const stats = {
-            totalUsers: userCount.rows[0].count,
-            totalInvestments: investmentCount.rows[0].count,
-            totalAmountInvested: totalInvested.rows[0].sum || 0,
-            recentUsers: recentUsers.rows
-        };
-        res.status(200).json(stats);
+        res.status(200).json({ totalUsers: userCount.rows[0].count, totalInvestments: investmentCount.rows[0].count, totalAmountInvested: totalInvested.rows[0].sum || 0, recentUsers: recentUsers.rows });
     } catch (error) { res.status(500).json({ message: 'An internal server error occurred.' }); }
 });
 
 app.get('/api/admin/users', authenticateAdmin, async (req, res) => {
     try {
-        const result = await pool.query('SELECT id, full_name, phone_number, created_at FROM users ORDER BY created_at DESC');
+        const result = await pool.query('SELECT id, full_name, phone_number, created_at, is_admin FROM users ORDER BY created_at DESC');
+        res.status(200).json(result.rows);
+    } catch (error) { res.status(500).json({ message: 'An internal server error occurred.' }); }
+});
+
+app.get('/api/admin/investments', authenticateAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT inv.id, inv.plan_name, inv.investment_amount, inv.start_date, u.full_name FROM investments inv JOIN users u ON inv.user_id = u.id ORDER BY inv.start_date DESC`);
+        res.status(200).json(result.rows);
+    } catch (error) { res.status(500).json({ message: 'An internal server error occurred.' }); }
+});
+
+app.post('/api/withdraw', authenticateToken, async (req, res) => {
+    const { amount, bankDetails } = req.body;
+    const userId = req.user.userId;
+    if (!amount || !bankDetails) { return res.status(400).json({ message: 'Amount and bank details are required.' }); }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const userRes = await client.query('SELECT balance FROM users WHERE id = $1 FOR UPDATE', [userId]);
+        if (userRes.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'User not found.' });}
+        const currentBalance = parseFloat(userRes.rows[0].balance);
+        if (currentBalance < amount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: 'Insufficient funds.' });
+        }
+        const newBalance = currentBalance - amount;
+        await client.query('UPDATE users SET balance = $1 WHERE id = $2', [newBalance, userId]);
+        const insertQuery = 'INSERT INTO withdrawals (user_id, amount, bank_details) VALUES ($1, $2, $3) RETURNING id';
+        await client.query(insertQuery, [userId, amount, bankDetails]);
+        await client.query('COMMIT');
+        res.status(201).json({ message: 'Withdrawal request submitted successfully.' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ message: 'An internal server error occurred.' });
+    } finally {
+        client.release();
+    }
+});
+
+app.get('/api/admin/withdrawals', authenticateAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT w.id, w.amount, w.status, w.requested_at, w.bank_details, u.full_name FROM withdrawals w JOIN users u ON w.user_id = u.id ORDER BY w.requested_at DESC`);
         res.status(200).json(result.rows);
     } catch (error) { res.status(500).json({ message: 'An internal server error occurred.' }); }
 });

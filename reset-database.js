@@ -9,12 +9,12 @@ const pool = new Pool({
 });
 
 const resetDatabase = async () => {
+  const client = await pool.connect();
   try {
     console.log('Connecting to the database...');
-    const client = await pool.connect();
-    
+
     console.log('Dropping old tables (if they exist)...');
-    await client.query('DROP TABLE IF EXISTS daily_tasks, investments, users CASCADE;');
+    await client.query('DROP TABLE IF EXISTS daily_tasks, withdrawals, investments, users CASCADE;');
 
     console.log('Creating "users" table...');
     await client.query(`
@@ -22,10 +22,12 @@ const resetDatabase = async () => {
         id SERIAL PRIMARY KEY,
         full_name VARCHAR(100) NOT NULL,
         phone_number VARCHAR(20) UNIQUE NOT NULL,
+        email VARCHAR(255) UNIQUE,
         password_hash TEXT NOT NULL,
         referral_code_used VARCHAR(50),
         own_referral_code VARCHAR(50) UNIQUE,
         is_admin BOOLEAN DEFAULT false,
+        balance NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
@@ -56,12 +58,24 @@ const resetDatabase = async () => {
       );
     `);
 
+    console.log('Creating "withdrawals" table...');
+    await client.query(`
+      CREATE TABLE withdrawals (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        amount NUMERIC(10, 2) NOT NULL,
+        bank_details JSONB NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        requested_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     console.log('✅ SUCCESS: Database has been completely reset.');
-    client.release();
 
   } catch (error) {
     console.error('Error during database reset:', error);
   } finally {
+    client.release();
     await pool.end();
   }
 };
