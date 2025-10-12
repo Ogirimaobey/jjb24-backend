@@ -9,6 +9,14 @@ const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY;
 
 /** Initialize a Flutterwave payment */
 export const initializePayment = async (userId, amount, email, phone) => {
+
+  const user = await findUserById(userId);
+  if (!user) throw new Error("User not found.");
+
+  if (user.email !== email) {
+    throw new Error("Email does not match your registered account.");
+  }
+
   const reference = `TX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   const transaction = await createTransaction(userId, amount, reference);
 
