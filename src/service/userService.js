@@ -166,3 +166,17 @@ export const getUserBalance = async (userId) => {
   };
 };
 
+// Verify User OTP
+export const verifyUserOtp = async (email, otp) => {
+  const user = await findUserByEmail(email);
+  if (!user) throw new Error("User not found");
+
+  if (user.is_verified) return "User already verified";
+  if (!user.otp_code || user.otp_code !== otp) throw new Error("Invalid OTP");
+
+  if (new Date() > user.otp_expires_at) throw new Error("OTP expired");
+
+  await updateUserVerification(email, true);
+
+  return "Email verified successfully";
+};
