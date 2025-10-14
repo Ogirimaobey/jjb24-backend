@@ -1,5 +1,7 @@
 import express from 'express';
 import { registerUser, loginUser, getUserBalance } from '../service/userService.js';
+import { verifyToken } from "../middleware/authMiddleware.js";
+
 
 const router = express.Router();
 

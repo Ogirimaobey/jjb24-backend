@@ -60,11 +60,33 @@ export const verifyPayment = async (req, secretHashFromEnv) => {
 
   const event = req.body;
   const { tx_ref, status, amount } = event.data;
+  console.log("Received event:", event.event, "Status:", status);
+
+
+
+  // if (
+  //   status === "successful" ||
+  //   event.event === "transfer.completed" ||
+  //   event.event === "payment.completed"
+  // ) {
+  //   await updateTransactionStatus(tx_ref, "success");
+  //   console.log(`Transaction ${tx_ref} marked successful`);
+  // } else if (status === "failed" || status === "cancelled") {
+  //   await updateTransactionStatus(tx_ref, "failed");
+  // }
+
 
   const transaction = await findTransactionByReference(tx_ref);
   if (!transaction) throw new Error("Transaction not found");
 
-  if (status === "successful") {
+   if (
+    status === "successful" ||
+    event.event === "transfer.completed" ||
+    event.event === "payment.completed" ||
+    event.event === "charge.completed" ||
+    event.event === "payment.success" ||
+    event.event === "transfer.success"
+  ) {
     await updateTransactionStatus(tx_ref, "success");
 
     const user = await findUserById(transaction.user_id);
