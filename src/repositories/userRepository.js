@@ -29,3 +29,20 @@ export const findUserById = async (userId) => {
   const { rows } = await pool.query(query, [userId]);
   return rows[0];
 };
+
+export const findUserByReferralCode = async (referralCode) => {
+  const query = `SELECT * FROM users WHERE own_referral_code = $1`;
+  const { rows } = await pool.query(query, [referralCode]);
+  return rows[0];
+};
+
+export const incrementReferralCount = async (userId) => {
+  const query = `
+    UPDATE users 
+    SET referral_count = COALESCE(referral_count, 0) + 1 
+    WHERE id = $1
+    RETURNING *;
+  `;
+  const { rows } = await pool.query(query, [userId]);
+  return rows[0];
+};

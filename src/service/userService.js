@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken';
-import { insertUser, findUserByPhone, findUserByEmail, findUserById } from '../repositories/userRepository.js';
+import crypto from "crypto";
+import nodemailer from "nodemailer";
+import { insertUser, findUserByPhone, findUserByEmail, findUserById, findUserByReferralCode, incrementReferralCount } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -17,8 +19,57 @@ export const registerUser = async (data) => {
   if (existingUserEmail) throw new Error('User with this email already exists.');
   if (existingUserNumber) throw new Error('User with this phone number already exists.');
 
+  if (referralCode) {
+  const referrer = await findUserByReferralCode(referralCode);
+
+  if (!referrer) throw new Error("Invalid referral code.");
+  await incrementReferralCount(referrer.id);
+  }
+
   const passwordHash = await hashPassword(password);
   const ownReferralCode = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+//   // Generate OTP
+//   const otp = crypto.randomInt(100000, 999999).toString();
+//   const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+//   const newUser = await insertUser({
+//     fullName,
+//     phone,
+//     email,
+//     password: passwordHash,
+//     referralCode,
+//     ownReferralCode,
+//     otp_code: otp,
+//     otp_expires_at: otpExpires,
+//   });
+
+//   await sendOtpEmail(email, otp);
+
+//   return {
+//     message: "User registered successfully. Check your email for OTP.",
+//     email,
+//   };
+// };
+
+// const sendOtpEmail = async (to, otp) => {
+//   const transporter = nodemailer.createTransport({
+//     service: "gmail",
+//     auth: {
+//       user: process.env.MAIL_USER,
+//       pass: process.env.MAIL_PASS,
+//     },
+//   });
+
+//   await transporter.sendMail({
+//     from: `"JJB24" <${process.env.MAIL_USER}>`,
+//     to,
+//     subject: "Verify Your Email - JJB24",
+//     html: `<p>Your verification code is <b>${otp}</b>. It expires in 10 minutes.</p>`,
+//   });
+// };
+
+
 
   const newUser = await insertUser({
     fullName,
@@ -38,6 +89,24 @@ export const registerUser = async (data) => {
   };
 };
 
+
+// Helper function to send OTP email
+const sendOtpEmail = async (to, otp) => {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.MAIL_USER,
+      pass: process.env.MAIL_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from: `"JJB24" <${process.env.MAIL_USER}>`,
+    to,
+    subject: "Verify Your Email - JJB24",
+    html: `<p>Your verification code is <b>${otp}</b>. It expires in 10 minutes.</p>`,
+  });
+};
 
 // Login user and return JWT token
 export const loginUser = async (data) => {
@@ -82,7 +151,6 @@ export const loginUser = async (data) => {
   };
 };
 
-
 //Get User Wallet Balance
 export const getUserBalance = async (userId) => {
   const user = await findUserById(userId);
@@ -97,3 +165,4 @@ export const getUserBalance = async (userId) => {
     balance: user.balance || 0.0,
   };
 };
+
