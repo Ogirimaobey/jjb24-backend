@@ -1,9 +1,9 @@
 import pool from '../config/database.js';
 
-export const insertUser = async ({ fullName, phone, email, password, referralCode, ownReferralCode, isAdmin = false }) => {
-  const q = `INSERT INTO users (full_name, phone_number, email, password_hash, referral_code_used, own_referral_code, is_admin)
-             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *;`;
-  const vals = [fullName, phone, email || null, password, referralCode || null, ownReferralCode || null, isAdmin];
+export const insertUser = async ({ fullName, phone, email, password, referralCode, ownReferralCode, isAdmin = false, otpCode, otpExpiresAt}) => {
+  const q = `INSERT INTO users (full_name, phone_number, email, password_hash, referral_code_used, own_referral_code, is_admin, otp_code, otp_expires_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7, $8, $9) RETURNING *;`;
+  const vals = [fullName, phone, email || null, password, referralCode || null, ownReferralCode || null, isAdmin, otpCode, otpExpiresAt];
   const { rows } = await pool.query(q, vals);
   return rows[0];
 };
@@ -45,4 +45,11 @@ export const incrementReferralCount = async (userId) => {
   `;
   const { rows } = await pool.query(query, [userId]);
   return rows[0];
+};
+
+export const updateUserVerification = async (email, verified) => {
+  await pool.query(
+    `UPDATE users SET is_verified = $1, otp_code = NULL, otp_expires_at = NULL WHERE email = $2`,
+    [verified, email]
+  );
 };
