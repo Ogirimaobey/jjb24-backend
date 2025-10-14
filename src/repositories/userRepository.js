@@ -13,12 +13,19 @@ export const findUserByPhone = async (phone) => {
   return rows[0];
 };
 
-export const findUserById = async (id) => {
-  const { rows } = await pool.query('SELECT id, full_name, phone_number, email, own_referral_code, is_admin, created_at FROM users WHERE id = $1', [id]);
+export const findUserByEmail = async (email) => {
+  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
   return rows[0];
 };
 
-export const findUserByEmail = async (email) => {
-  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+export const updateUserBalance = async (userId, newBalance) => {
+  const query = `UPDATE users SET balance = $1 WHERE id = $2 RETURNING *;`;
+  const { rows } = await pool.query(query, [newBalance, userId]);
+  return rows[0];
+};
+
+export const findUserById = async (userId) => {
+  const query = `SELECT * FROM users WHERE id = $1`;
+  const { rows } = await pool.query(query, [userId]);
   return rows[0];
 };

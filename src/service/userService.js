@@ -1,12 +1,13 @@
 import jwt from 'jsonwebtoken';
-import { insertUser, findUserByPhone, findUserByEmail } from '../repositories/userRepository.js';
+import { insertUser, findUserByPhone, findUserByEmail, findUserById } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
-// const JWT_SECRET = process.env.JWT_SECRET || '';
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not defined in environment variables');
 // console.log('JWT_SECRET loaded:', JWT_SECRET);
 
+
+// Register a new user
 export const registerUser = async (data) => {
   const { fullName, phone, email, password, referralCode } = data;
 
@@ -38,6 +39,7 @@ export const registerUser = async (data) => {
 };
 
 
+// Login user and return JWT token
 export const loginUser = async (data) => {
   const { phone, email, password } = data;
 
@@ -77,5 +79,21 @@ export const loginUser = async (data) => {
       email: user.email,
       is_admin: user.is_admin,
     },
+  };
+};
+
+
+//Get User Wallet Balance
+export const getUserBalance = async (userId) => {
+  const user = await findUserById(userId);
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  return {
+    id: user.id,
+    full_name: user.full_name,
+    balance: user.balance || 0.0,
   };
 };

@@ -14,6 +14,15 @@ const createUserTable = `
   );
 `;
 
+const createTableAdmin = `
+  CREATE TABLE IF NOT EXISTS admin (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(100) UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  is_admin BOOLEAN DEFAULT true
+);
+`;
+
 const createTransactionsTable = `
   CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
@@ -54,7 +63,14 @@ const createInvestmentTable = `
 const alterTableUsers = `
   ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE,
-  ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+  ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS balance NUMERIC(10, 2) DEFAULT 0.00,
+  DROP COLUMN IF EXISTS type;
+`;
+
+const alterTableTransactions = `
+  ALTER TABLE transactions
+    ADD COLUMN IF NOT EXISTS type VARCHAR(20) CHECK (type IN ('deposit', 'withdrawal')) DEFAULT 'deposit';
 `;
 
 const setupDatabase = async () => {
@@ -65,10 +81,14 @@ const setupDatabase = async () => {
 
     await client.query(createUserTable);
     console.log('SUCCESS: "users" table created successfully (or already existed).');
+    await client.query(createTableAdmin);
+    console.log('SUCCESS: "admin" table created successfully (or already existed).');
     await client.query(alterTableUsers);
     console.log('SUCCESS: "users" table altered successfully (if needed).');
     await client.query(createTransactionsTable);
     console.log('SUCCESS: "transactions" table created successfully (or already existed).');
+    await client.query(alterTableTransactions);
+    console.log('SUCCESS: "transactions" table altered successfully (if needed).');
     await client.query(createDailyTaskTable);
     console.log('SUCCESS: "daily_tasks" table created successfully (or already existed).');
     await client.query(createInvestmentTable);
