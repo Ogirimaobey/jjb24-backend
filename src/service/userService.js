@@ -5,7 +5,7 @@ import nodemailer from "nodemailer";
 import { insertUser, findUserByPhone, 
   findUserByEmail, findUserById, 
   findUserByReferralCode, incrementReferralCount,
-  updateUserVerification
+  updateUserVerification, updateUserBalance
  } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
@@ -145,5 +145,13 @@ export const verifyUserOtp = async (email, otp) => {
 
   await updateUserVerification(email, true);
 
-  return "Email verified successfully";
+  const referralBonus = 200.0;
+  const newBalance = Number(user.balance) + referralBonus;
+  await updateUserBalance(user.id, newBalance);
+
+  return {
+    success: true,
+    message: `OTP verified successfully! ₦${referralBonus} bonus added to your wallet.`,
+    newBalance,
+  };
 };
