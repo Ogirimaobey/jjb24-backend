@@ -1,5 +1,7 @@
 import express from 'express';
-import { registerUser, loginUser, getUserBalance } from '../service/userService.js';
+import { registerUser, loginUser, getUserBalance, verifyUserOtp } from '../service/userService.js';
+import { verifyToken } from "../middleware/authMiddleware.js";
+
 
 const router = express.Router();
 
@@ -30,6 +32,16 @@ router.get("/balance", verifyToken, async (req, res) => {
     res.status(200).json({ success: true, balance: data.balance });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post("/verify-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const result = await verifyUserOtp(email, otp);
+    res.status(200).json({ success: true, message: result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 });
 
