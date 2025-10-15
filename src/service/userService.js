@@ -1,3 +1,4 @@
+import pool from '../config/database.js';
 import jwt from 'jsonwebtoken';
 import crypto from "crypto";
 import nodemailer from "nodemailer";
@@ -33,11 +34,8 @@ export const registerUser = async (data) => {
   const passwordHash = await hashPassword(password);
   const ownReferralCode = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
-  //  Generate OTP
   const otp = crypto.randomInt(100000, 999999).toString();
   const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
-
-  await sendOtpEmail(email, otp);
 
   const newUser = await insertUser({
     fullName,
@@ -46,31 +44,16 @@ export const registerUser = async (data) => {
     password: passwordHash,
     referralCode,
     ownReferralCode,
-    otp_code: otp,
-    otp_expires_at: otpExpires,
+    otpCode: otp,
+    otpExpiresAt: otpExpires,
   });
+
+  await sendOtpEmail(email, otp);
 
   return {
     message: "User registered successfully. Check your email for OTP.",
     email,
   };
-
-  // const newUser = await insertUser({
-  //   fullName,
-  //   phone,
-  //   email,
-  //   password: passwordHash,
-  //   referralCode,
-  //   ownReferralCode,
-  // });
-
-  // return {
-  //   id: newUser.id,
-  //   full_name: newUser.full_name,
-  //   phone_number: newUser.phone_number,
-  //   email: newUser.email,
-  //   own_referral_code: newUser.own_referral_code,
-  // };
 };
 
 
