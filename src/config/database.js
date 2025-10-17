@@ -9,6 +9,10 @@ const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '*******',
   database: process.env.DB_NAME || 'jjb24db',
+  connectionString: process.env.DB_URL
+
 });
+
+
 
 export default pool;

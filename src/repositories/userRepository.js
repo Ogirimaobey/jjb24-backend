@@ -22,3 +22,9 @@ export const findUserByEmail = async (email) => {
   const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
   return rows[0];
 };
+export async function getUserBalance(id) {
+  const account_q = 'SELECT balance FROM users WHERE id = $1';
+  const { rows } = await pool.query(account_q, [id]);
+  if (!rows[0]) return null;
+  return rows[0].balance === null ? 0 : Number(rows[0].balance);
+}

@@ -41,5 +41,17 @@ router.post("/verify", async (req, res) => {
     res.status(400).json({ success: false, message: err.message });
   }
 });
+router.get('/balance', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+    const balance = await getBalance(userId);
+    return res.json({ balance });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+});
+
 
 export default router;

@@ -22,4 +22,5 @@ export const updateTransactionStatus = async (reference, status) => {
     'UPDATE transactions SET status = $1 WHERE reference = $2',
     [status, reference]
   );
+
 };

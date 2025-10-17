@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { insertUser, findUserByPhone, findUserByEmail } from '../repositories/userRepository.js';
+import { insertUser, findUserByPhone, findUserByEmail, getUserBalance } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
 // const JWT_SECRET = process.env.JWT_SECRET || '';
@@ -79,3 +79,10 @@ export const loginUser = async (data) => {
     },
   };
 };
+
+export const getBalance = async (userId) => {
+  if (!userId) throw new Error('User id is required');
+  const balance = await getUserBalance(userId);
+  if (balance === null) throw new Error('User not found');
+  return balance; // number
+}

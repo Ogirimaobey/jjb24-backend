@@ -11,6 +11,7 @@ const createUserTable = `
     own_referral_code VARCHAR(50) UNIQUE,
     is_admin BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW()
+
   );
 `;
 
@@ -32,6 +33,7 @@ const createDailyTaskTable = `
     task_date DATE NOT NULL DEFAULT CURRENT_DATE,
     tasks_completed INTEGER NOT NULL DEFAULT 0,
     UNIQUE (user_id, task_date)
+   
   );
 `;
 
@@ -47,6 +49,7 @@ const createInvestmentTable = `
     start_date TIMESTAMPTZ DEFAULT NOW(),
     end_date TIMESTAMPTZ,
     is_active BOOLEAN DEFAULT true
+    
   );
 `;
 
