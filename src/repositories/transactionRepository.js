@@ -45,3 +45,20 @@ export const getPendingWithdrawals = async () => {
   const { rows } = await pool.query(query);
   return rows;
 };
+
+export const getAllTransactionsByUserId = async (userId) => {
+  const query = `
+    SELECT 
+      id,
+      amount,
+      status,
+      reference,
+      type,
+      created_at
+    FROM transactions 
+    WHERE user_id = $1 
+    ORDER BY created_at DESC
+  `;
+  const { rows } = await pool.query(query, [userId]);
+  return rows;
+};
