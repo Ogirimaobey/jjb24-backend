@@ -1,5 +1,5 @@
 import express from 'express';
-import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal } from '../service/transactionService.js';
+import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal, getUserTransactions } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -67,6 +67,17 @@ router.patch("/approve/:reference", verifyAdmin, async (req, res) => {
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// Get all transactions for the current logged-in user
+router.get("/history", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await getUserTransactions(userId);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

@@ -1,6 +1,6 @@
 import axios from "axios";
 import dotenv from "dotenv";
-import { createTransaction, findTransactionByReference, updateTransactionStatus, createWithdrawal } from "../repositories/transactionRepository.js";
+import { createTransaction, findTransactionByReference, updateTransactionStatus, createWithdrawal, getAllTransactionsByUserId } from "../repositories/transactionRepository.js";
 import { findUserById, updateUserBalance } from "../repositories/userRepository.js";
 
 dotenv.config();
@@ -198,5 +198,19 @@ export const approveWithdrawal = async (reference, approve = true) => {
   return {
     message: `Withdrawal ${approve ? "approved & sent" : "rejected"}`,
     transactionRef: reference,
+  };
+};
+
+/** Get all transactions for a specific user */
+export const getUserTransactions = async (userId) => {
+  const user = await findUserById(userId);
+  if (!user) throw new Error("User not found");
+
+  const transactions = await getAllTransactionsByUserId(userId);
+  
+  return {
+    message: "Transactions retrieved successfully",
+    transactions,
+    totalCount: transactions.length
   };
 };
