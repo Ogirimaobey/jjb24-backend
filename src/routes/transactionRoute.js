@@ -35,19 +35,31 @@ router.post("/verify", async (req, res) => {
 });
 
 //User initiates withdrawal
+// router.post("/withdraw", verifyToken, async (req, res) => {
+//   try {
+//     const { amount } = req.body;
+//     const userId = req.user.id;
+//     const result = await requestWithdrawal(userId, amount);
+//     res.status(200).json({ success: true, ...result });
+//   } catch (err) {
+//     res.status(400).json({ success: false, message: err.message });
+//   }
+// });
+
 router.post("/withdraw", verifyToken, async (req, res) => {
   try {
-    const { amount } = req.body;
-    const userId = req.user.id;
-    const result = await requestWithdrawal(userId, amount);
+    const { amount, bank_name, account_number, account_name } = req.body;
+    const result = await requestWithdrawal(req.user.id, amount, bank_name, account_number, account_name);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
 });
 
+
+
 //Admin approves/rejects withdrawal
-router.patch("/approve/:reference", verifyToken, verifyAdmin, async (req, res) => {
+router.patch("/approve/:reference", verifyAdmin, async (req, res) => {
   try {
     const { reference } = req.params;
     const { approve } = req.body;
