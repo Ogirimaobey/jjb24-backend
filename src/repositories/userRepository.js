@@ -23,8 +23,16 @@ export const findUserByEmail = async (email) => {
   return rows[0];
 };
 export async function getUserBalance(id) {
-  const account_q = 'SELECT balance FROM users WHERE id = $1';
-  const { rows } = await pool.query(account_q, [id]);
-  if (!rows[0]) return null;
-  return rows[0].balance === null ? 0 : Number(rows[0].balance);
+  const userId = Number(id);
+  try {
+    const account_q = 'SELECT balance FROM users WHERE id = $1';
+    const { rows } = await pool.query(account_q, [userId]);
+    if (!rows[0]) return null; //user not found
+    const balance = rows[0].balance;
+    //make null to zero
+    return balance === null ? 0 : Number(balance);
+  } catch (error) {
+    console.error('Error fetching user balance:', error);
+    throw new Error('Could not fetch user balance');
+  }
 }

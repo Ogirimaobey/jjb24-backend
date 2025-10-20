@@ -1,5 +1,7 @@
 import express from 'express';
 import { initializePayment, verifyPayment } from '../service/transactionService.js';
+import { getBalance } from '../service/transactionService.js';
+import { verifyToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -41,17 +43,29 @@ router.post("/verify", async (req, res) => {
     res.status(400).json({ success: false, message: err.message });
   }
 });
-router.get('/balance', authenticateToken, async (req, res) => {
+// router.get('/balance', verifyPayment, async (req, res) => {
+//   try {
+//     const userId = req.user?.id;
+//     if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+//     const balance = await getBalance({ id: userId });
+//     return res.json({ balance });
+//   } catch (err) {
+//     console.error(err);
+//     return res.status(500).json({ message: err.message || 'Server error' });
+//   }
+// });
+router.get('/balance/:id',verifyToken, async (req, res) => {  
   try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+    const userId = req.params.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });}
+    console.log(`Fetching balance for user ID: ${userId}`);  
     const balance = await getBalance(userId);
     return res.json({ balance });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: err.message || 'Server error' });
-  }
-});
-
+    console.error(`Balance fetch failed for user ${req.params.id || 'unknown'}:`, err); 
+     return res.status(500).json({ message: 'Server error' }); }
+}
+);
 
 export default router;

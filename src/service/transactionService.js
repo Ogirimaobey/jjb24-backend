@@ -1,7 +1,7 @@
 import axios from "axios";
 import dotenv from "dotenv";
 import { createTransaction, findTransactionByReference, updateTransactionStatus } from "../repositories/transactionRepository.js";
-
+import { findUserById, getUserBalance } from "../repositories/userRepository.js";
 dotenv.config();
 
 const FLW_BASE_URL = process.env.FLW_BASE_URL;
@@ -61,4 +61,27 @@ export const verifyPayment = async (reqBody, secretHashFromEnv) => {
   }
 
   return { success: true, message: "Transaction verified" };
+};
+
+export const getBalance = async (user) => {
+  const userId = user;
+  try {
+    const fullUser = await findUserById(userId); //find the user in db
+    if (!fullUser) {
+      throw new Error('User not found');
+    }
+    console.log('User found for balance:', fullUser.fullName);
+
+    const balance = await getUserBalance(userId);
+    if (balance === null) {
+      throw new Error('User not found');
+    }
+    return balance; 
+  } catch (error) {
+    console.error('Error in getBalance:', error);
+    if (error.message.includes('not found')) {
+      throw new Error('User not found');
+    }
+    throw new Error('Failed to retrieve balance');
+  }
 };

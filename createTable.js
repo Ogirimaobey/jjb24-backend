@@ -10,6 +10,7 @@ const createUserTable = `
     referral_code_used VARCHAR(50),
     own_referral_code VARCHAR(50) UNIQUE,
     is_admin BOOLEAN DEFAULT false,
+    balance NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMPTZ DEFAULT NOW()
 
   );
