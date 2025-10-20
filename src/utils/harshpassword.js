@@ -1,8 +1,3 @@
-// const bcrypt = require('bcrypt');
-// const jwt = require('jsonwebtoken');
-
-// const saltRounds = 10;
-// const JWT_SECRET = 'your_super_secret_jwt_key_that_is_long_and_random';
 import bcrypt from 'bcrypt';
 
 const SALT_ROUNDS = 10;

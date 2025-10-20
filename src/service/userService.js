@@ -1,12 +1,20 @@
+import pool from '../config/database.js';
 import jwt from 'jsonwebtoken';
-import { insertUser, findUserByPhone, findUserByEmail } from '../repositories/userRepository.js';
+import crypto from "crypto";
+import nodemailer from "nodemailer";
+import { insertUser, findUserByPhone, 
+  findUserByEmail, findUserById, 
+  findUserByReferralCode, incrementReferralCount,
+  updateUserVerification, updateUserBalance
+ } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
-// const JWT_SECRET = process.env.JWT_SECRET || '';
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not defined in environment variables');
 // console.log('JWT_SECRET loaded:', JWT_SECRET);
 
+
+// Register a new user
 export const registerUser = async (data) => {
   const { fullName, phone, email, password, referralCode } = data;
 
@@ -16,8 +24,39 @@ export const registerUser = async (data) => {
   if (existingUserEmail) throw new Error('User with this email already exists.');
   if (existingUserNumber) throw new Error('User with this phone number already exists.');
 
+  if (referralCode) {
+  const referrer = await findUserByReferralCode(referralCode);
+
+  if (!referrer) throw new Error("Invalid referral code.");
+  await incrementReferralCount(referrer.id);
+  }
+
   const passwordHash = await hashPassword(password);
   const ownReferralCode = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+  // const newUser = await insertUser({
+  //   fullName,
+  //   phone,
+  //   email,
+  //   password: passwordHash,
+  //   referralCode,
+  //   ownReferralCode,
+  //   otpCode: otp,
+  //   otpExpiresAt: otpExpires,
+  // });
+
+  // await sendOtpEmail(email, otp);
+
+  // return {
+  //   message: "User registered successfully. Check your email for OTP.",
+  //   email,
+  // };
+
+  try {
+  await sendOtpEmail(email, otp);
 
   const newUser = await insertUser({
     fullName,
@@ -26,18 +65,41 @@ export const registerUser = async (data) => {
     password: passwordHash,
     referralCode,
     ownReferralCode,
+    otpCode: otp,
+    otpExpiresAt: otpExpires,
   });
 
   return {
-    id: newUser.id,
-    full_name: newUser.full_name,
-    phone_number: newUser.phone_number,
-    email: newUser.email,
-    own_referral_code: newUser.own_referral_code,
+    message: "User registered successfully. Check your email for OTP.",
+    email,
   };
+} catch (err) {
+  console.error("Error sending OTP:", err.message);
+  throw new Error("Failed to send verification email. Please try again.");
+}
+
 };
 
 
+// Helper function to send OTP email
+const sendOtpEmail = async (to, otp) => {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.MAIL_USER,
+      pass: process.env.MAIL_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from: `"JJB24" <${process.env.MAIL_USER}>`,
+    to,
+    subject: "Verify Your Email - JJB24",
+    html: `<p>Your verification code is <b>${otp}</b>. It expires in 10 minutes.</p>`,
+  });
+};
+
+// Login user and return JWT token
 export const loginUser = async (data) => {
   const { phone, email, password } = data;
 
@@ -77,5 +139,45 @@ export const loginUser = async (data) => {
       email: user.email,
       is_admin: user.is_admin,
     },
+  };
+};
+
+//Get User Wallet Balance
+export const getUserBalance = async (userId) => {
+  const user = await findUserById(userId);
+
+  // userPassword, username, userEmail, userBalance, userId
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  return {
+    id: user.id,
+    full_name: user.full_name,
+    balance: user.balance || 0.0,
+  };
+};
+
+// Verify User OTP
+export const verifyUserOtp = async (email, otp) => {
+  const user = await findUserByEmail(email);
+  if (!user) throw new Error("User not found");
+
+  if (user.is_verified) return "User already verified";
+  if (!user.otp_code || user.otp_code !== otp) throw new Error("Invalid OTP");
+
+  if (new Date() > user.otp_expires_at) throw new Error("OTP expired");
+
+  await updateUserVerification(email, true);
+ 
+  const referralBonus = 200.0;
+  const newBalance = Number(user.balance) + referralBonus;
+  await updateUserBalance(user.id, newBalance);
+
+  return {
+    success: true,
+    message: `OTP verified successfully! ₦${referralBonus} bonus added to your wallet.`,
+    newBalance,
   };
 };
