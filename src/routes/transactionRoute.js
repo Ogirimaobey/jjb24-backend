@@ -1,5 +1,5 @@
 import express from 'express';
-import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal, getUserTransactions } from '../service/transactionService.js';
+import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal, getUserTransactions, getUserWithdrawalTransactions, getUserDepositTransactions } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -64,6 +64,28 @@ router.get("/history", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await getUserTransactions(userId);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get withdrawal transactions for the current logged-in user
+router.get("/withdrawals", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await getUserWithdrawalTransactions(userId);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get deposit transactions for the current logged-in user
+router.get("/deposits", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await getUserDepositTransactions(userId);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

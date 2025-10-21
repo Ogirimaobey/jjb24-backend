@@ -75,3 +75,37 @@ export const getAllTransactionsByUserId = async (userId) => {
   const { rows } = await pool.query(query, [userId]);
   return rows;
 };
+
+export const getWithdrawalTransactionsByUserId = async (userId) => {
+  const query = `
+    SELECT 
+      id,
+      amount,
+      status,
+      reference,
+      type,
+      created_at
+    FROM transactions 
+    WHERE user_id = $1 AND type = 'withdrawal'
+    ORDER BY created_at DESC
+  `;
+  const { rows } = await pool.query(query, [userId]);
+  return rows;
+};
+
+export const getDepositTransactionsByUserId = async (userId) => {
+  const query = `
+    SELECT 
+      id,
+      amount,
+      status,
+      reference,
+      type,
+      created_at
+    FROM transactions 
+    WHERE user_id = $1 AND type = 'deposit'
+    ORDER BY created_at DESC
+  `;
+  const { rows } = await pool.query(query, [userId]);
+  return rows;
+};
