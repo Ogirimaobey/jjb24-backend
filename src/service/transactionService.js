@@ -1,6 +1,6 @@
 import axios from "axios";
 import dotenv from "dotenv";
-import { createTransaction, findTransactionByReference, updateTransactionStatus, createWithdrawalTransaction, getAllTransactionsByUserId } from "../repositories/transactionRepository.js";
+import { createTransaction, findTransactionByReference, updateTransactionStatus, createWithdrawalTransaction, getAllTransactionsByUserId, getWithdrawalTransactionsByUserId, getDepositTransactionsByUserId } from "../repositories/transactionRepository.js";
 import { findUserById, updateUserBalance } from "../repositories/userRepository.js";
 
 dotenv.config();
@@ -233,4 +233,30 @@ export const getUserTransactions = async (userId) => {
   };
 };
 
+//Get withdrawal transactions for a specific user
+export const getUserWithdrawalTransactions = async (userId) => {
+  const user = await findUserById(userId);
+  if (!user) throw new Error("User not found");
 
+  const transactions = await getWithdrawalTransactionsByUserId(userId);
+  
+  return {
+    message: "Withdrawal transactions retrieved successfully",
+    transactions,
+    totalCount: transactions.length
+  };
+};
+
+//Get deposit transactions for a specific user
+export const getUserDepositTransactions = async (userId) => {
+  const user = await findUserById(userId);
+  if (!user) throw new Error("User not found");
+
+  const transactions = await getDepositTransactionsByUserId(userId);
+  
+  return {
+    message: "Deposit transactions retrieved successfully",
+    transactions,
+    totalCount: transactions.length
+  };
+};

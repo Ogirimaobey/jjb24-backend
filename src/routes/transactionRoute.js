@@ -1,6 +1,7 @@
 import express from 'express';
-import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal, getUserTransactions } from '../service/transactionService.js';
+import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal, getUserTransactions, getUserWithdrawalTransactions, getUserDepositTransactions } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
+import { getBalance } from '../service/transactionService.js';
 
 const router = express.Router();
 
@@ -34,7 +35,22 @@ router.post("/verify", async (req, res) => {
   }
 });
 
+// Get user balance
+router.get('/balance/:id',verifyToken, async (req, res) => {  
+  try {
+    const userId = req.params;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });}
+    console.log(`Fetching balance for user ID: ${userId}`);  
+    const balance = await getBalance(userId);
+    return res.json({ balance });
+  } catch (err) {
+    console.error(`Balance fetch failed for user ${req.params || 'unknown'}:`, err); 
+     return res.status(500).json({ message: 'Server error' }); }
+}
+);
 
+//withdrawal request by user
 router.post("/withdraw", verifyToken, async (req, res) => {
   try {
     const { amount, bank_name, account_number, account_name } = req.body;
@@ -64,6 +80,29 @@ router.get("/history", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await getUserTransactions(userId);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+ 
+});
+
+// Get withdrawal transactions for the current logged-in user
+router.get("/withdrawals", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await getUserWithdrawalTransactions(userId);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get deposit transactions for the current logged-in user
+router.get("/deposits", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await getUserDepositTransactions(userId);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
