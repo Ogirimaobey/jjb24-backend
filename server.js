@@ -217,7 +217,6 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*"}));
 
-
 app.use('/api/users', userRoutes);
 app.use('/api/payment', transactionRoutes);
 app.use('/api/admin', adminRoutes);
