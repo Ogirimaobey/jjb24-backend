@@ -9,6 +9,19 @@ export const createTransaction = async (userId, amount, reference) => {
   return result.rows[0];
 };
 
+export const createWithdrawalTransaction = async (userId, amount, reference, bankName, accountNumber, accountName) => {
+  const result = await pool.query(
+    `INSERT INTO transactions 
+      (user_id, amount, reference, status, type, bank_name, account_number, account_name)
+     VALUES ($1, $2, $3, 'pending', 'withdrawal', $4, $5, $6)
+     RETURNING *`,
+    [userId, amount, reference, bankName, accountNumber, accountName]
+  );
+
+  return result.rows[0];
+};
+
+
 export const findTransactionByUserId = async (user_Id) => {
   const query = `SELECT * FROM transactions WHERE user_Id = $1`;
   const { rows } = await pool.query(query, [user_Id]);

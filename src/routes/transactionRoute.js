@@ -59,7 +59,7 @@ router.post("/withdraw", verifyToken, async (req, res) => {
 
 
 //Admin approves/rejects withdrawal
-router.patch("/approve/:reference", verifyAdmin, async (req, res) => {
+router.patch("/approve/:reference",verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { reference } = req.params;
     const { approve } = req.body;
