@@ -35,7 +35,7 @@ router.post("/verify", async (req, res) => {
   }
 });
 
-
+// Get user balance
 router.get('/balance/:id',verifyToken, async (req, res) => {  
   try {
     const userId = req.params;
