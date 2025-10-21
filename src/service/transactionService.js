@@ -11,7 +11,7 @@ const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY;
 let bankCodeCache = {};
 let lastFetched = 0;
 
-/** Initialize a Flutterwave payment */
+// Initialize a Flutterwave payment
 export const initializePayment = async (userId, amount, email, phone) => {
 
   const user = await findUserById(userId);
@@ -53,6 +53,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
   };
 };
 
+
 // Verify payment via Flutterwave webhook
 export const verifyPayment = async (req, secretHashFromEnv) => {
   const flwSignature = req.headers["verif-hash"];
@@ -89,6 +90,7 @@ export const verifyPayment = async (req, secretHashFromEnv) => {
   return { success: true, message: "Transaction verified and balance updated" };
 };
 
+
 // User initiates withdrawal 
 export const requestWithdrawal = async (userId, amount, bankName, accountNumber, accountName) => {
   const user = await findUserById(userId);
@@ -108,7 +110,6 @@ export const requestWithdrawal = async (userId, amount, bankName, accountNumber,
     accountNumber,
     accountName
   );
-
   // console.log("Created withdrawal transaction:", transaction);
 
   const newBalance = Number(user.balance) - Number(amount);
@@ -120,13 +121,15 @@ export const requestWithdrawal = async (userId, amount, bankName, accountNumber,
   };
 };
 
+
+
 // Admin approves or rejects withdrawal
 export const approveWithdrawal = async (reference, approve = true) => {
   const transaction = await findTransactionByReference(reference);
   // console.log("Transaction details:", transaction);
   if (!transaction) throw new Error("Transaction not found");
 
-  if (transaction.status !== "pending") throw new Error("Already processed");
+  if (transaction.status !== "pending") throw new Error("Already proccessed");
 
   const user = await findUserById(transaction.user_id);
   if (!user) throw new Error("User not found");
@@ -155,9 +158,7 @@ export const approveWithdrawal = async (reference, approve = true) => {
 
         if (response.data.status === "success") {
           await updateTransactionStatus(reference, "success");
-          console.log(
-            `Withdrawal sent to ${transaction.account_name} (${transaction.account_number})`
-          );
+          console.log(`Withdrawal sent to ${transaction.account_name} (${transaction.account_number})`);
         } else {
           throw new Error("Bank transfer failed at Flutterwave");
         }
@@ -218,7 +219,7 @@ const getBankCode = async (bankName) => {
 
 
 
-/** Get all transactions for a specific user */
+//Get all transactions for a specific user
 export const getUserTransactions = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");

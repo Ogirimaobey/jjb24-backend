@@ -5,6 +5,7 @@ import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+
 router.post('/register', async (req, res) => {
   const { fullName, phone, email, password, referralCode } = req.body;  
   try {
@@ -16,6 +17,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
+
 router.post('/login', async (req, res) => {
   try {
     const result = await loginUser(req.body);
@@ -26,15 +28,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// router.get("/balance", verifyToken, async (req, res) => {
-//   try {
-//     const data = await getUserBalance(req.user.id);
-//     res.status(200).json({ success: true, balance: data.balance });
-//   } 
-//   catch (err) {
-//     res.status(500).json({ success: false, message: err.message });
-//   }
-// });
 
 router.get("/balance", verifyToken, async (req, res) => {
   try {
@@ -46,6 +39,7 @@ router.get("/balance", verifyToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
+
 
 router.post("/verify-otp", async (req, res) => {
   try {
