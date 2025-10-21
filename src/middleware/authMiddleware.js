@@ -14,6 +14,8 @@ export const verifyToken = (req, res, next) => {
 };
 
 export const verifyAdmin = (req, res, next) => {
+  // console.log("Decoded token user:", req.user);
+
   if (!req.user || req.user.role !== "admin") {
     return res.status(403).json({ message: "Access forbidden: Admins only" });
   }

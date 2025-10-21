@@ -134,7 +134,6 @@ export const getUserBalance = async (userId) => {
   }
 
   return {
-    id: user.id,
     full_name: user.full_name,
     balance: user.balance || 0.0,
   };

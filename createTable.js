@@ -82,7 +82,6 @@ const alterTableTransactions = `
     ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100),
     ADD COLUMN IF NOT EXISTS account_number VARCHAR(20),
     ADD COLUMN IF NOT EXISTS account_name VARCHAR(100);
-
 `;
 
 const setupDatabase = async () => {
