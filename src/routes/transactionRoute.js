@@ -1,6 +1,7 @@
 import express from 'express';
 import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal, getUserTransactions } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
+import { getBalance } from '../service/transactionService.js';
 
 const router = express.Router();
 
@@ -33,6 +34,30 @@ router.post("/verify", async (req, res) => {
     res.status(400).json({ success: false, message: err.message });
   }
 });
+// router.get('/balance', verifyPayment, async (req, res) => {
+//   try {
+//     const userId = req.user?.id;
+//     if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+//     const balance = await getBalance({ id: userId });
+//     return res.json({ balance });
+//   } catch (err) {
+//     console.error(err);
+//     return res.status(500).json({ message: err.message || 'Server error' });
+//   }
+// });
+router.get('/balance/:id',verifyToken, async (req, res) => {  
+  try {
+    const userId = req.params;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });}
+    console.log(`Fetching balance for user ID: ${userId}`);  
+    const balance = await getBalance(userId);
+    return res.json({ balance });
+  } catch (err) {
+    console.error(`Balance fetch failed for user ${req.params || 'unknown'}:`, err); 
+     return res.status(500).json({ message: 'Server error' }); }
+}
+);
 
 
 router.post("/withdraw", verifyToken, async (req, res) => {
@@ -68,6 +93,20 @@ router.get("/history", verifyToken, async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+ 
 });
+ router.get('/balance/:id',verifyToken, async (req, res) => {  
+  try {
+    const userId = req.params.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized: User ID missing' });}
+    console.log(`Fetching balance for user ID: ${userId}`);  
+    const balance = await getBalance(userId);
+    return res.json({ balance });
+  } catch (err) {
+    console.error(`Balance fetch failed for user ${req.params.id || 'unknown'}:`, err); 
+     return res.status(500).json({ message: 'Server error' }); }
+}
+);
 
 export default router;

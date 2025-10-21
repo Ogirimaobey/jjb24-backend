@@ -7,6 +7,7 @@ const User = {
   referral_code_used: '',
   own_referral_code: '',
   is_admin: false,
+  balance: 0.00,
   created_at: new Date(),
 };
 
