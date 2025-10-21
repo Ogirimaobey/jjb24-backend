@@ -26,13 +26,24 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// router.get("/balance", verifyToken, async (req, res) => {
+//   try {
+//     const data = await getUserBalance(req.user.id);
+//     res.status(200).json({ success: true, balance: data.balance });
+//   } 
+//   catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
 router.get("/balance", verifyToken, async (req, res) => {
   try {
-    const data = await getUserBalance(req.user.id);
-    res.status(200).json({ success: true, balance: data.balance });
-  } 
-  catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    const userId = req.user.id; 
+
+    const balance = await getUserBalance(userId);
+    res.status(200).json({success: true, balance});
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 });
 

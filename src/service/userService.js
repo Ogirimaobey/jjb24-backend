@@ -11,8 +11,6 @@ import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not defined in environment variables');
-// console.log('JWT_SECRET loaded:', JWT_SECRET);
-
 
 // Register a new user
 export const registerUser = async (data) => {
@@ -36,24 +34,6 @@ export const registerUser = async (data) => {
 
   const otp = crypto.randomInt(100000, 999999).toString();
   const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
-
-  // const newUser = await insertUser({
-  //   fullName,
-  //   phone,
-  //   email,
-  //   password: passwordHash,
-  //   referralCode,
-  //   ownReferralCode,
-  //   otpCode: otp,
-  //   otpExpiresAt: otpExpires,
-  // });
-
-  // await sendOtpEmail(email, otp);
-
-  // return {
-  //   message: "User registered successfully. Check your email for OTP.",
-  //   email,
-  // };
 
   try {
   await sendOtpEmail(email, otp);
@@ -84,7 +64,10 @@ export const registerUser = async (data) => {
 // Helper function to send OTP email
 const sendOtpEmail = async (to, otp) => {
   const transporter = nodemailer.createTransport({
-    service: "gmail",
+    // service: "gmail",
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
     auth: {
       user: process.env.MAIL_USER,
       pass: process.env.MAIL_PASS,
@@ -145,8 +128,6 @@ export const loginUser = async (data) => {
 //Get User Wallet Balance
 export const getUserBalance = async (userId) => {
   const user = await findUserById(userId);
-
-  // userPassword, username, userEmail, userBalance, userId
 
   if (!user) {
     throw new Error("User not found");
