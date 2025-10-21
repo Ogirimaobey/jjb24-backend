@@ -260,5 +260,3 @@ export const getUserDepositTransactions = async (userId) => {
     totalCount: transactions.length
   };
 };
-
-
