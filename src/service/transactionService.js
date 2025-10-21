@@ -129,7 +129,7 @@ export const approveWithdrawal = async (reference, approve = true) => {
   // console.log("Transaction details:", transaction);
   if (!transaction) throw new Error("Transaction not found");
 
-  if (transaction.status !== "pending") throw new Error("Already processed");
+  if (transaction.status !== "pending") throw new Error("Already proccessed");
 
   const user = await findUserById(transaction.user_id);
   if (!user) throw new Error("User not found");
