@@ -4,7 +4,6 @@ const item = {
   price:null,
   dailyIncome:'',
   itemImage:'' 
-
 }
 
 export default item;
