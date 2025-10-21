@@ -1,7 +1,10 @@
 import express from 'express';
-import { registerUser, loginUser } from '../service/userService.js';
+import { registerUser, loginUser, getUserBalance, verifyUserOtp } from '../service/userService.js';
+import { verifyToken } from "../middleware/authMiddleware.js";
+
 
 const router = express.Router();
+
 
 router.post('/register', async (req, res) => {
   const { fullName, phone, email, password, referralCode } = req.body;  
@@ -14,6 +17,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
+
 router.post('/login', async (req, res) => {
   try {
     const result = await loginUser(req.body);
@@ -21,6 +25,29 @@ router.post('/login', async (req, res) => {
   } 
   catch (error) {
     res.status(401).json({ success: false, message: error.message });
+  }
+});
+
+
+router.get("/balance", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id; 
+
+    const balance = await getUserBalance(userId);
+    res.status(200).json({success: true, balance});
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+
+router.post("/verify-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const result = await verifyUserOtp(email, otp);
+    res.status(200).json({ success: true, message: result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 });
 
