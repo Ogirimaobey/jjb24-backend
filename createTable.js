@@ -83,6 +83,17 @@ const alterTableTransactions = `
     ADD COLUMN IF NOT EXISTS account_number VARCHAR(20),
     ADD COLUMN IF NOT EXISTS account_name VARCHAR(100);
 `;
+const createItemTable = `
+  CREATE TABLE IF NOT EXISTS items (
+    id SERIAL PRIMARY KEY,
+    itemName VARCHAR(100) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    dailyIncome NUMERIC(10, 2) NOT NULL,
+    itemImage VARCHAR(255) NOT NULL
+  );
+`
+
+
 
 const setupDatabase = async () => {
   try {
@@ -104,7 +115,9 @@ const setupDatabase = async () => {
     console.log('SUCCESS: "daily_tasks" table created successfully (or already existed).');
     await client.query(createInvestmentTable);
     console.log('SUCCESS: "investments" table created successfully (or already existed).');
-
+    await client.query(createItemTable);
+    console.log('SUCCESS: "items" table created successfully (or already existed).');
+    
     client.release();
     console.log('Tables created/verified.');
 
