@@ -1,7 +1,7 @@
 import express from 'express';
 import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal, getUserTransactions, getUserWithdrawalTransactions, getUserDepositTransactions } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
-import { getBalance } from '../service/transactionService.js';
+import { getUserBalance } from '../service/userService.js';
 
 const router = express.Router();
 
@@ -42,7 +42,7 @@ router.get('/balance/:id',verifyToken, async (req, res) => {
     if (!userId) {
       return res.status(401).json({ message: 'Unauthorized: User ID missing' });}
     console.log(`Fetching balance for user ID: ${userId}`);  
-    const balance = await getBalance(userId);
+    const balance = await getUserBalance(userId);
     return res.json({ balance });
   } catch (err) {
     console.error(`Balance fetch failed for user ${req.params || 'unknown'}:`, err); 
