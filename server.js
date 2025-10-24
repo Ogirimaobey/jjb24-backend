@@ -207,10 +207,7 @@ import dotenv from 'dotenv';
 import userRoutes from './src/routes/userRoute.js';
 import transactionRoutes from './src/routes/transactionRoute.js';
 import adminRoutes from './src/routes/adminRoutes.js';
-import itemRoutes from './src/routes/itemRoutes.js';
 import cors from "cors";
-
-
 
 dotenv.config();
 
@@ -221,7 +218,6 @@ app.use(cors({ origin: "*"}));
 app.use('/api/users', userRoutes);
 app.use('/api/payment', transactionRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/items', itemRoutes);
 
 
 const PORT = process.env.PORT || 5000;
