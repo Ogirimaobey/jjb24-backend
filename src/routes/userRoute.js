@@ -1,11 +1,12 @@
 import express from 'express';
 import { registerUser, loginUser, getUserBalance, verifyUserOtp } from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
+import { getAllItems, getItemById } from '../service/itemService.js';
 
 
 const router = express.Router();
 
-
+// User registration
 router.post('/register', async (req, res) => {
   const { fullName, phone, email, password, referralCode } = req.body;  
   try {
@@ -17,7 +18,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-
+// User login
 router.post('/login', async (req, res) => {
   try {
     const result = await loginUser(req.body);
@@ -29,6 +30,7 @@ router.post('/login', async (req, res) => {
 });
 
 
+// Get User Wallet Balance
 router.get("/balance", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id; 
@@ -41,6 +43,7 @@ router.get("/balance", verifyToken, async (req, res) => {
 });
 
 
+// Verify User OTP
 router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -48,6 +51,29 @@ router.post("/verify-otp", async (req, res) => {
     res.status(200).json({ success: true, message: result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+
+// Get all items (users can view)
+router.get('/allItems', verifyToken, async (req, res) => {
+  try {
+    const result = await getAllItems();
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
+// Get single item by ID
+router.get('/item/:id', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await getItemById(id);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    res.status(404).json({ success: false, message: err.message });
   }
 });
 

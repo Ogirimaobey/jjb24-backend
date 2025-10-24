@@ -209,8 +209,6 @@ import transactionRoutes from './src/routes/transactionRoute.js';
 import adminRoutes from './src/routes/adminRoutes.js';
 import cors from "cors";
 
-
-
 dotenv.config();
 
 const app = express();
