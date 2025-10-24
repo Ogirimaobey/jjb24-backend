@@ -207,10 +207,7 @@ import dotenv from 'dotenv';
 import userRoutes from './src/routes/userRoute.js';
 import transactionRoutes from './src/routes/transactionRoute.js';
 import adminRoutes from './src/routes/adminRoutes.js';
-// import itemRoutes from './src/routes/itemRoutes.js';
 import cors from "cors";
-
-
 
 dotenv.config();
 
