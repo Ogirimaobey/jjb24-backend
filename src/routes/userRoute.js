@@ -21,12 +21,23 @@ router.post('/register', async (req, res) => {
 // User login
 router.post('/login', async (req, res) => {
   try {
-    const result = await loginUser(req.body);
-    res.json({ success: true, ...result });
+    const { token, user } = await loginUser(req.body);
+  res.cookie('authToken', token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'None',
+  maxAge: 1000*60*30, 
+});
+res.json({ success: true, user });
   } 
   catch (error) {
     res.status(401).json({ success: false, message: error.message });
   }
+});
+// User logout
+router.post('/logout', (req, res) => {
+  res.clearCookie('authToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Strict' });
+  res.status.apply(200).json({ success: true });
 });
 
 
@@ -75,6 +86,15 @@ router.get('/item/:id', verifyToken, async (req, res) => {
   } catch (err) {
     res.status(404).json({ success: false, message: err.message });
   }
+});
+
+//Cookies -Authentication
+router.get('/check-auth', verifyToken, (req, res) => {
+    // If middleware passes, user is auth'd—send minimal data
+    res.json({ 
+        success: true, 
+        user: { username: req.user.userId }  
+    });
 });
 
 export default router;
