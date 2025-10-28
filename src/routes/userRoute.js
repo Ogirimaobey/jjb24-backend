@@ -8,7 +8,7 @@ const router = express.Router();
 
 // User registration
 router.post('/register', async (req, res) => {
-  const { fullName, phone, email, password, referralCode } = req.body;  
+  // const { fullName, phone, email, password, referralCode } = req.body;  
   try {
     const user = await registerUser(req.body);
     res.status(201).json({ success: true, user });
@@ -59,9 +59,9 @@ router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
     const result = await verifyUserOtp(email, otp);
-    res.status(200).json({ success: true, message: result });
+    res.status(200).json(result.message, result.newBalance);
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    res.status(400).json( err.message );
   }
 });
 

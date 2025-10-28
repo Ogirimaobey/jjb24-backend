@@ -38,7 +38,7 @@ export const registerUser = async (data) => {
   try {
   await sendOtpEmail(email, otp);
 
-  const newUser = await insertUser({
+   await insertUser({
     fullName,
     phone,
     email,
@@ -46,7 +46,7 @@ export const registerUser = async (data) => {
     referralCode,
     ownReferralCode,
     otpCode: otp,
-    otpExpiresAt: otpExpires,
+    otpExpiresAt:otpExpires,
   });
 
   return {
@@ -109,7 +109,7 @@ export const loginUser = async (data) => {
   const token = jwt.sign(
     { id: user.id, phone: user.phone_number, email: user.email, is_admin: user.is_admin },
     JWT_SECRET,
-    { expiresIn: '1h' }
+    { expiresIn: '10m' }
   );
 
   return {
