@@ -208,12 +208,18 @@ import userRoutes from './src/routes/userRoute.js';
 import transactionRoutes from './src/routes/transactionRoute.js';
 import adminRoutes from './src/routes/adminRoutes.js';
 import cors from "cors";
+import cookieParser from 'cookie-parser';
 
 dotenv.config();
 
 const app = express();
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://192.168.56.1:8080';
+app.use(cookieParser());
 app.use(express.json());
-app.use(cors({ origin: "*"}));
+app.use(cors({
+  origin: FRONTEND_ORIGIN,  
+  credentials: true
+}));
 
 app.use('/api/users', userRoutes);
 app.use('/api/payment', transactionRoutes);
