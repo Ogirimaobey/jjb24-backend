@@ -4,7 +4,8 @@ import userRoutes from './src/routes/userRoute.js';
 import transactionRoutes from './src/routes/transactionRoute.js';
 import adminRoutes from './src/routes/adminRoutes.js';
 import cors from "cors";
-
+import cron from 'node-cron';
+import { processDailyEarnings } from './src/service/investmentService.js';
 
 dotenv.config();
 
@@ -20,3 +21,7 @@ app.use('/api/admin', adminRoutes);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
+// Runs every 24 hours
+cron.schedule('0 0 * * *', async () => {
+  await processDailyEarnings();
+});

@@ -26,3 +26,35 @@ export const createInvestment = async (userId, itemId) => {
 
   return investment;
 };
+
+
+
+// This job runs daily to add each user's dailyEarning to their balance.
+export const processDailyEarnings = async () => {
+  console.log("Running daily earnings processor...");
+
+  const { rows: investments } = await pool.query(getAllInvestmentsQuery);
+  console.log(`Found ${investments.length} active investments.`);
+
+  for (const investment of investments) {
+    const { id, user_id, daily_earning, total_earning } = investment;
+
+    const user = await findUserById(user_id);
+    if (!user) {
+      console.warn(`User ${user_id} not found for investment ${id}`);
+      continue;
+    }
+
+    const newBalance = Number(user.balance) + Number(daily_earning);
+    await updateUserBalance(user.id, newBalance);
+
+    const newTotalEarning = Number(total_earning) + Number(daily_earning);
+    await pool.query(updateInvestmentEarningsQuery, [id, newTotalEarning]);
+
+    console.log(
+      `Updated user ${user.id} balance: ${newBalance}, investment ${id} total earning: ${newTotalEarning}`
+    );
+  }
+
+  console.log("Daily earnings processing completed!");
+};
