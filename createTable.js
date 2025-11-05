@@ -25,6 +25,16 @@ const createTableAdmin = `
 );
 `;
 
+const createTableInvestments = `
+  CREATE TABLE investments (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  daily_earning NUMERIC DEFAULT 0,
+  total_earning NUMERIC DEFAULT 0
+);
+`;
+
+
 const createTransactionsTable = `
   CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
@@ -49,18 +59,15 @@ const createDailyTaskTable = `
 
 
 const createInvestmentTable = `
-  CREATE TABLE IF NOT EXISTS investments (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    plan_id VARCHAR(10) NOT NULL,
-    plan_name VARCHAR(100) NOT NULL,
-    investment_amount NUMERIC(10, 2) NOT NULL,
-    daily_revenue NUMERIC(10, 2) NOT NULL,
-    start_date TIMESTAMPTZ DEFAULT NOW(),
-    end_date TIMESTAMPTZ,
-    is_active BOOLEAN DEFAULT true
-    
-  );
+CREATE TABLE investments (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+  daily_earning NUMERIC DEFAULT 0,
+  total_earning NUMERIC DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 `;
 
 
@@ -105,6 +112,8 @@ const setupDatabase = async () => {
     console.log('SUCCESS: "users" table created successfully (or already existed).');
     await client.query(createTableAdmin);
     console.log('SUCCESS: "admin" table created successfully (or already existed).');
+    await client.query(createTableInvestments);
+    console.log('SUCCESS: "investments" table created successfully (or already existed).');
     await client.query(alterTableUsers);
     console.log('SUCCESS: "users" table altered successfully (if needed).');
     await client.query(createTransactionsTable);
