@@ -24,6 +24,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // Runs every 24 hours
-cron.schedule('0 0 * * *', async () => {
+cron.schedule('0 * * * *', async () => {
   await processDailyEarnings();
 });
