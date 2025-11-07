@@ -25,6 +25,7 @@ const createTableAdmin = `
 );
 `;
 
+
 const createTransactionsTable = `
   CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
@@ -49,18 +50,15 @@ const createDailyTaskTable = `
 
 
 const createInvestmentTable = `
-  CREATE TABLE IF NOT EXISTS investments (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    plan_id VARCHAR(10) NOT NULL,
-    plan_name VARCHAR(100) NOT NULL,
-    investment_amount NUMERIC(10, 2) NOT NULL,
-    daily_revenue NUMERIC(10, 2) NOT NULL,
-    start_date TIMESTAMPTZ DEFAULT NOW(),
-    end_date TIMESTAMPTZ,
-    is_active BOOLEAN DEFAULT true
-    
-  );
+CREATE TABLE IF NOT EXISTS investments (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+  daily_earning NUMERIC DEFAULT 0,
+  total_earning NUMERIC DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 `;
 
 
