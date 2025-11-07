@@ -5,6 +5,7 @@ import transactionRoutes from './src/routes/transactionRoute.js';
 import adminRoutes from './src/routes/adminRoutes.js';
 import cors from "cors";
 import cron from 'node-cron';
+import investmentRoute from './src/routes/investmentRoute.js';
 import { processDailyEarnings } from './src/service/investmentService.js';
 
 dotenv.config();
@@ -16,6 +17,7 @@ app.use(cors({ origin: "*"}));
 app.use('/api/users', userRoutes);
 app.use('/api/payment', transactionRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/investments', investmentRoute);
 
 
 const PORT = process.env.PORT || 5000;

@@ -1,40 +1,51 @@
-import { createInvestmentRecord, getAllInvestmentsQuery, updateInvestmentEarningsQuery} from '../repositories/investmentRepository.js';
+import pool from '../config/database.js';
+import { insertInvestment, getAllInvestments, updateInvestmentEarnings} from '../repositories/investmentRepository.js';
 import { findUserById, updateUserBalance } from '../repositories/userRepository.js';
-import { findItemById } from '../repositories/itemRepository.js';
+import { getItemByIdQuery } from '../repositories/itemRepository.js';
 
 //Create investment for User
 export const createInvestment = async (userId, itemId) => {
-  const user = await findUserById(userId);
-  if (!user) throw new Error('User not found');
-  console.log('Found user details:', user);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const item = await findItemById(itemId);
-  if (!item) throw new Error('Item not found');
-  console.log('Found item details:', item);
+    const user = await findUserById(userId);
+    if (!user) throw new Error('User not found');
 
-  if (Number(user.balance) < Number(item.price)) {
-    throw new Error('Insufficient balance to make this investment');
+    const { rows } = await client.query(getItemByIdQuery, [itemId]);
+    const item = rows[0];
+
+    if (!item) throw new Error('Item not found');
+
+    if (Number(user.balance) < Number(item.price)) {
+      throw new Error('Insufficient balance to make this investment');
+    }
+
+    const newUserBalance = Number(user.balance) - Number(item.price);
+    await updateUserBalance(user.id, newUserBalance, client);
+
+    const dailyEarning = item.dailyincome;
+
+    const investment = await insertInvestment(
+      { userId, itemId, dailyEarning, totalEarning: 0 },
+      client
+    );
+
+    await client.query('COMMIT');
+    return investment;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-
-  const newUserBalance = Number(user.balance) - Number(item.price);
-  await updateUserBalance(user.id, newUserBalance);
-  console.log(`Deducted ${item.price} from user ${userId}. New balance: ${newUserBalance}`);
-
-  const dailyEarning = item.dailyIncome;
-
-  const investment = await createInvestmentRecord(userId, itemId, dailyEarning, 0);
-
-  return investment;
 };
 
 
 
 // This job runs daily to add each user's dailyEarning to their balance.
 export const processDailyEarnings = async () => {
-  console.log("Running daily earnings processor...");
-
-  const { rows: investments } = await pool.query(getAllInvestmentsQuery);
-  console.log(`Found ${investments.length} active investments.`);
+  const investments = await getAllInvestments(); 
 
   for (const investment of investments) {
     const { id, user_id, daily_earning, total_earning } = investment;
@@ -49,12 +60,6 @@ export const processDailyEarnings = async () => {
     await updateUserBalance(user.id, newBalance);
 
     const newTotalEarning = Number(total_earning) + Number(daily_earning);
-    await pool.query(updateInvestmentEarningsQuery, [id, newTotalEarning]);
-
-    console.log(
-      `Updated user ${user.id} balance: ${newBalance}, investment ${id} total earning: ${newTotalEarning}`
-    );
+    await updateInvestmentEarnings(id, newTotalEarning);
   }
-
-  console.log("Daily earnings processing completed!");
 };

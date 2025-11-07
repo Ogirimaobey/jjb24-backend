@@ -1,5 +1,5 @@
 import express from 'express';
-import { createInvestment } from '../services/investmentService.js';
+import { createInvestment } from '../service/investmentService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -12,6 +12,7 @@ router.post('/createInvestment', verifyToken, async (req, res) => {
     res.status(201).json({ success: true, data: investment });
   } 
   catch (error) {
+    console.error("Error creating investment:", error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
