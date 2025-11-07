@@ -4,10 +4,10 @@ import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.post('/createInvestment', verifyToken, async (req, res) => {
+router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { itemId } = req.body;
+    const { itemId } = req.params;
     const investment = await createInvestment(userId, itemId);
     res.status(201).json({ success: true, data: investment });
   } 
