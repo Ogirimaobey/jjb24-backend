@@ -63,3 +63,5 @@ export const processDailyEarnings = async () => {
     await updateInvestmentEarnings(id, newTotalEarning);
   }
 };
+
+
