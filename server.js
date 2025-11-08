@@ -11,6 +11,7 @@ import { processDailyEarnings } from './src/service/investmentService.js';
 
 
 
+
 dotenv.config();
 
 const app = express();
