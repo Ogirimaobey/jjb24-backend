@@ -1,5 +1,5 @@
 import pool from '../config/database.js';
-import { insertInvestment, getAllInvestments, updateInvestmentEarnings} from '../repositories/investmentRepository.js';
+import { insertInvestment, getAllInvestments, updateInvestmentEarnings, getAllInvestmentsByUserId} from '../repositories/investmentRepository.js';
 import { findUserById, updateUserBalance } from '../repositories/userRepository.js';
 import { getItemByIdQuery } from '../repositories/itemRepository.js';
 
@@ -62,6 +62,49 @@ export const processDailyEarnings = async () => {
     const newTotalEarning = Number(total_earning) + Number(daily_earning);
     await updateInvestmentEarnings(id, newTotalEarning);
   }
+};
+
+// Get all investments for a user with calculations
+export const getUserInvestments = async (userId) => {
+  const user = await findUserById(userId);
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  const investments = await getAllInvestmentsByUserId(userId);
+
+  // Calculate total investment amount (sum of all item prices)
+  let totalInvestmentAmount = 0;
+  
+  // Calculate total daily income (sum of all daily_earning)
+  let totalDailyIncome = 0;
+
+  // Format investments with item details
+  const formattedInvestments = investments.map(investment => {
+    const investmentAmount = Number(investment.price) || 0;
+    const dailyIncome = Number(investment.daily_earning) || 0;
+    
+    totalInvestmentAmount += investmentAmount;
+    totalDailyIncome += dailyIncome;
+
+    return {
+      id: investment.id,
+      itemId: investment.item_id,
+      itemName: investment.itemName,
+      itemImage: investment.itemImage,
+      investmentAmount: investmentAmount,
+      dailyIncome: dailyIncome,
+      totalEarning: Number(investment.total_earning) || 0,
+      createdAt: investment.created_at
+    };
+  });
+
+  return {
+    investments: formattedInvestments,
+    totalInvestmentAmount: totalInvestmentAmount,
+    totalDailyIncome: totalDailyIncome,
+    totalInvestments: investments.length
+  };
 };
 
 
