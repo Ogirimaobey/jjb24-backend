@@ -44,3 +44,26 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
 export const deleteInvestment = async (investmentId) => {
   await pool.query('DELETE FROM investments WHERE id = $1', [investmentId]);
 };
+
+// Get all investments for a specific user with item details
+export const getAllInvestmentsByUserId = async (userId) => {
+  const query = `
+    SELECT 
+      i.id,
+      i.user_id,
+      i.item_id,
+      i.daily_earning,
+      i.total_earning,
+      i.created_at,
+      it.itemname as "itemName",
+      it.price,
+      it.dailyincome as "dailyIncome",
+      it.itemimage as "itemImage"
+    FROM investments i
+    INNER JOIN items it ON i.item_id = it.id
+    WHERE i.user_id = $1
+    ORDER BY i.created_at DESC
+  `;
+  const { rows } = await pool.query(query, [userId]);
+  return rows;
+};
