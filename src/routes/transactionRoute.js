@@ -8,8 +8,9 @@ const router = express.Router();
 // User initiates payment
 router.post('/initialize', verifyToken, async (req, res) => {
   try {
-    const { userId, amount, email, name } = req.body;
-    const data = await initializePayment(userId, amount, email, name);
+    const {amount} = req.body;
+    const {id: userId, email, phone } = req.user;
+    const data = await initializePayment(userId, amount, email, phone);
     res.status(200).json({
       success: true,
       message: 'Payment initialized',
