@@ -5,7 +5,7 @@ import { verifyToken } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 // Get all investments for the logged-in user
-router.get('/', verifyToken, async (req, res) => {
+router.get('/allInvestment', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await getUserInvestments(userId);
