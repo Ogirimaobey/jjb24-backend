@@ -23,7 +23,17 @@ router.get('/allInvestment', verifyToken, async (req, res) => {
 router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { itemId } = req.params;
+    let { itemId } = req.params;
+    
+    // Validate itemId is a number
+    itemId = Number(itemId);
+    if (isNaN(itemId) || itemId <= 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid item ID. Expected a number, got: ${req.params.itemId}` 
+      });
+    }
+    
     const investment = await createInvestment(userId, itemId);
     res.status(201).json({ success: true, data: investment });
   } 
