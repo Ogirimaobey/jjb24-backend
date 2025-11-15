@@ -58,7 +58,6 @@ CREATE TABLE IF NOT EXISTS investments (
   total_earning NUMERIC DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
 `;
 
 
