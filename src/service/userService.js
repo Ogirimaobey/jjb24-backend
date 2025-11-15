@@ -38,7 +38,7 @@ export const registerUser = async (data) => {
   try {
   await sendOtpEmail(email, otp);
 
-  const newUser = await insertUser({
+   await insertUser({
     fullName,
     phone,
     email,
@@ -46,7 +46,7 @@ export const registerUser = async (data) => {
     referralCode,
     ownReferralCode,
     otpCode: otp,
-    otpExpiresAt: otpExpires,
+    otpExpiresAt:otpExpires,
   });
 
   return {
@@ -161,3 +161,4 @@ export const verifyUserOtp = async (email, otp) => {
     newBalance,
   };
 };
+

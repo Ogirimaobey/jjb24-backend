@@ -15,8 +15,13 @@ import { processDailyEarnings } from './src/service/investmentService.js';
 dotenv.config();
 
 const app = express();
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://192.168.56.1:8080';
+app.use(cookieParser());
 app.use(express.json());
-app.use(cors({ origin: "*"}));
+app.use(cors({
+  origin: FRONTEND_ORIGIN,  
+  credentials: true
+}));
 
 app.use('/api/users', userRoutes);
 app.use('/api/payment', transactionRoutes);
