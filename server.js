@@ -1,5 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 import userRoutes from './src/routes/userRoute.js';
 import transactionRoutes from './src/routes/transactionRoute.js';
 import adminRoutes from './src/routes/adminRoutes.js';
@@ -15,11 +16,23 @@ import { processDailyEarnings } from './src/service/investmentService.js';
 dotenv.config();
 
 const app = express();
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://192.168.56.1:8080';
+// Allow multiple origins for local development
+const allowedOrigins = process.env.FRONTEND_ORIGIN 
+  ? process.env.FRONTEND_ORIGIN.split(',')
+  : ['http://localhost:8000', 'http://localhost:8080', 'http://127.0.0.1:8000', 'http://127.0.0.1:8080', 'http://192.168.56.1:8080'];
+
 app.use(cookieParser());
 app.use(express.json());
 app.use(cors({
-  origin: FRONTEND_ORIGIN,  
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all origins in development
+    }
+  },
   credentials: true
 }));
 
