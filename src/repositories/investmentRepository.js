@@ -67,3 +67,40 @@ export const getAllInvestmentsByUserId = async (userId) => {
   const { rows } = await pool.query(query, [userId]);
   return rows;
 };
+
+// Get all investments with user and item details (for admin)
+export const getAllInvestmentsWithDetails = async () => {
+  const query = `
+    SELECT 
+      i.id,
+      i.user_id,
+      i.item_id,
+      i.created_at as start_date,
+      u.full_name,
+      it.itemname as plan_name,
+      it.price as investment_amount
+    FROM investments i
+    INNER JOIN users u ON i.user_id = u.id
+    INNER JOIN items it ON i.item_id = it.id
+    ORDER BY i.created_at DESC
+  `;
+  const { rows } = await pool.query(query);
+  return rows;
+};
+
+// Get total investments count
+export const getTotalInvestmentsCount = async () => {
+  const { rows } = await pool.query('SELECT COUNT(*) as count FROM investments');
+  return parseInt(rows[0].count);
+};
+
+// Get total amount invested (sum of all item prices from investments)
+export const getTotalAmountInvested = async () => {
+  const query = `
+    SELECT COALESCE(SUM(it.price), 0) as total
+    FROM investments i
+    INNER JOIN items it ON i.item_id = it.id
+  `;
+  const { rows } = await pool.query(query);
+  return parseFloat(rows[0].total) || 0;
+};
