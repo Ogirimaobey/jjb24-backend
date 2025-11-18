@@ -26,7 +26,7 @@ export const updateVipQuery = `
       updated_at = CURRENT_TIMESTAMP
   WHERE id = $1
   RETURNING *;
-`;
+`;  
 
 export const deleteVipQuery = `
   DELETE FROM casper_vip WHERE id = $1;

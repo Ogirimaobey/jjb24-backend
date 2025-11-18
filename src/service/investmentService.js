@@ -2,6 +2,7 @@ import pool from '../config/database.js';
 import { insertInvestment, getAllInvestments, updateInvestmentEarnings, getAllInvestmentsByUserId} from '../repositories/investmentRepository.js';
 import { findUserById, updateUserBalance } from '../repositories/userRepository.js';
 import { getItemByIdQuery } from '../repositories/itemRepository.js';
+import { getVipByIdQuery } from '../repositories/vipRepository.js';
 
 //Create investment for User
 export const createInvestment = async (userId, itemId) => {
@@ -42,8 +43,48 @@ export const createInvestment = async (userId, itemId) => {
 };
 
 
+//Create CASPERVIP investment for User
+export const createVipInvestment = async (userId, vipId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const user = await findUserById(userId);
+    if (!user) throw new Error('User not found');
 
-// This job runs daily to add each user's dailyEarning to their balance.
+    const { rows } = await client.query(getVipByIdQuery, [vipId]);
+    const vip = rows[0];
+
+    console.log('VIP details: ', vip);
+
+    if (!vip) throw new Error('CASPERVIP product not found');
+    if (Number(user.balance) < Number(vip.price)) {
+      throw new Error('Insufficient balance to make this investment');
+    }
+    const newUserBalance = Number(user.balance) - Number(vip.price);
+    await updateUserBalance(user.id, newUserBalance, client);
+
+    const dailyEarning = vip.daily_earnings;
+    const investment = await insertInvestment(
+      { userId, itemId: vipId, dailyEarning, totalEarning: 0 },
+      client
+    );
+
+    // console.log('Created CASPERVIP investment: ', investment);
+
+    await client.query('COMMIT');
+    return investment;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error in createVipInvestment:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+
+
+// This runs daily to add each user's dailyEarning to their balance.
 export const processDailyEarnings = async () => {
   const investments = await getAllInvestments(); 
 
@@ -73,10 +114,8 @@ export const getUserInvestments = async (userId) => {
 
   const investments = await getAllInvestmentsByUserId(userId);
 
-  // Calculate total investment amount (sum of all item prices)
   let totalInvestmentAmount = 0;
   
-  // Calculate total daily income (sum of all daily_earning)
   let totalDailyIncome = 0;
 
   // Format investments with item details

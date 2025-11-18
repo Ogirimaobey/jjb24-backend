@@ -1,5 +1,5 @@
 import express from 'express';
-import { createInvestment, getUserInvestments } from '../service/investmentService.js';
+import { createInvestment, getUserInvestments, createVipInvestment} from '../service/investmentService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -20,6 +20,7 @@ router.get('/allInvestment', verifyToken, async (req, res) => {
   }
 });
 
+// Create a new item investment for the logged-in user
 router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -44,3 +45,18 @@ router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
 });
 
 export default router;
+
+
+//Create CASPERVIP investment for users
+router.post('/createVipInvestment/:vipId', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    let { vipId } = req.params;
+
+    const casperVIPInvestment = await createVipInvestment(userId, vipId);
+    res.status(201).json({ success: true, data: casperVIPInvestment });
+  } 
+  catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
