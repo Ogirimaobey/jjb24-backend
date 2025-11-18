@@ -22,11 +22,12 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { token, user } = await loginUser(req.body);
-  res.cookie('authToken', token, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'None',
-  maxAge: 1000*60*30, 
+    // console.log("Token received in router:", token);
+    res.cookie('authToken', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'None',
+    maxAge: 1000*60*30, 
 });
 res.json({ success: true, user });
   } 
@@ -34,6 +35,7 @@ res.json({ success: true, user });
     res.status(401).json({ success: false, message: error.message });
   }
 });
+
 // User logout
 router.post('/logout', (req, res) => {
   res.clearCookie('authToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Strict' });
