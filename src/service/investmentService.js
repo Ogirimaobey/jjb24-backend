@@ -151,15 +151,12 @@ export const getUserEarningsSummary = async (userId) => {
   try {
     const investments = await getAllInvestmentsByUserId(userId);
     
-    // Get today's date (start of day)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Get yesterday's date (start of day)
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
-    // Get tomorrow's date (end of today)
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
@@ -172,19 +169,14 @@ export const getUserEarningsSummary = async (userId) => {
       const dailyEarning = Number(investment.daily_earning) || 0;
       const totalEarning = Number(investment.total_earning) || 0;
       
-      // Calculate if investment was active today (created before today and still active)
-      // For simplicity, we'll use the daily_earning as today's earning if investment exists
-      // In a real scenario, you'd check if the investment is still within its duration
       if (investmentDate <= today) {
         todayEarnings += dailyEarning;
       }
       
-      // Calculate if investment was active yesterday
       if (investmentDate <= yesterday) {
         yesterdayEarnings += dailyEarning;
       }
       
-      // Total earnings is sum of all total_earning
       totalEarnings += totalEarning;
     });
     

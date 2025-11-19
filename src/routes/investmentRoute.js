@@ -1,6 +1,7 @@
 import express from 'express';
 import { createInvestment, getUserInvestments, createVipInvestment} from '../service/investmentService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
+import { getAllVips } from '../service/vipService.js';
 
 const router = express.Router();
 
@@ -58,5 +59,15 @@ router.post('/createVipInvestment/:vipId', verifyToken, async (req, res) => {
   } 
   catch (error) {
     res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+//Get CASPERVIP investment for users
+router.get('/allVipInvestment', verifyToken, async (req, res) => {
+  try {
+    const data = await getAllVips();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
   }
 });
