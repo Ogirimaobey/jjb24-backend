@@ -60,6 +60,26 @@ export const updateUserVerification = async (email, verified) => {
   );
 };
 
+// Get all users (for admin)
+export const getAllUsers = async () => {
+  const query = `SELECT id, full_name, phone_number, email, is_admin, created_at FROM users ORDER BY created_at DESC`;
+  const { rows } = await pool.query(query);
+  return rows;
+};
+
+// Get total users count
+export const getTotalUsersCount = async () => {
+  const { rows } = await pool.query('SELECT COUNT(*) as count FROM users');
+  return parseInt(rows[0].count);
+};
+
+// Get recent users (last 10)
+export const getRecentUsers = async (limit = 10) => {
+  const query = `SELECT full_name, phone_number, created_at FROM users ORDER BY created_at DESC LIMIT $1`;
+  const { rows } = await pool.query(query, [limit]);
+  return rows;
+};
+
 // export const updateUserBalance = async (userId, newBalance) => {
 //   const query = `UPDATE users SET balance = $1 WHERE id = $2 RETURNING *;`;
 //   const { rows } = await pool.query(query, [newBalance, userId]);
