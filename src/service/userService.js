@@ -162,3 +162,16 @@ export const verifyUserOtp = async (email, otp) => {
   };
 };
 
+
+export const getUserProfile = async (userId) => {
+  const user = await findUserById(userId);
+  if (!user) throw new Error("User not found");
+  // console.log("User profile fetched:", user);
+  return {
+    id: user.id,
+    full_name: user.full_name,
+    phone_number: user.phone_number,
+    email: user.email,
+    referral_code: user.own_referral_code
+  };
+};
