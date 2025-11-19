@@ -38,7 +38,7 @@ export const registerUser = async (data) => {
   try {
   await sendOtpEmail(email, otp);
 
-  const newUser = await insertUser({
+   await insertUser({
     fullName,
     phone,
     email,
@@ -46,7 +46,7 @@ export const registerUser = async (data) => {
     referralCode,
     ownReferralCode,
     otpCode: otp,
-    otpExpiresAt: otpExpires,
+    otpExpiresAt:otpExpires,
   });
 
   return {
@@ -109,7 +109,7 @@ export const loginUser = async (data) => {
   const token = jwt.sign(
     { id: user.id, phone: user.phone_number, email: user.email, is_admin: user.is_admin },
     JWT_SECRET,
-    { expiresIn: '5m' }
+    { expiresIn: '7d' }
   );
 
   return {
@@ -159,5 +159,19 @@ export const verifyUserOtp = async (email, otp) => {
     success: true,
     message: `OTP verified successfully! ₦${referralBonus} bonus added to your wallet.`,
     newBalance,
+  };
+};
+
+
+export const getUserProfile = async (userId) => {
+  const user = await findUserById(userId);
+  if (!user) throw new Error("User not found");
+  // console.log("User profile fetched:", user);
+  return {
+    id: user.id,
+    full_name: user.full_name,
+    phone_number: user.phone_number,
+    email: user.email,
+    referral_code: user.own_referral_code
   };
 };

@@ -1,5 +1,5 @@
 import express from 'express';
-import { createInvestment, getUserInvestments } from '../service/investmentService.js';
+import { createInvestment, getUserInvestments, createVipInvestment} from '../service/investmentService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -20,10 +20,21 @@ router.get('/allInvestment', verifyToken, async (req, res) => {
   }
 });
 
+// Create a new item investment for the logged-in user
 router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { itemId } = req.params;
+    let { itemId } = req.params;
+    
+    // Validate itemId is a number
+    itemId = Number(itemId);
+    if (isNaN(itemId) || itemId <= 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid item ID. Expected a number, got: ${req.params.itemId}` 
+      });
+    }
+    
     const investment = await createInvestment(userId, itemId);
     res.status(201).json({ success: true, data: investment });
   } 
@@ -34,3 +45,18 @@ router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
 });
 
 export default router;
+
+
+//Create CASPERVIP investment for users
+router.post('/createVipInvestment/:vipId', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    let { vipId } = req.params;
+
+    const casperVIPInvestment = await createVipInvestment(userId, vipId);
+    res.status(201).json({ success: true, data: casperVIPInvestment });
+  } 
+  catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});

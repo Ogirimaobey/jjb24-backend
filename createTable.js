@@ -58,7 +58,6 @@ CREATE TABLE IF NOT EXISTS investments (
   total_earning NUMERIC DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
 `;
 
 
@@ -90,6 +89,19 @@ const createItemTable = `
     itemImage VARCHAR(255) NOT NULL
   );
 `
+const createVipTable = `
+  CREATE TABLE IF NOT EXISTS casper_vip (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    daily_earnings NUMERIC(10, 2) NOT NULL,
+    duration_days INTEGER NOT NULL,
+    total_returns NUMERIC(20, 2) NOT NULL,
+    image VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`;
 
 
 
@@ -115,6 +127,8 @@ const setupDatabase = async () => {
     console.log('SUCCESS: "investments" table created successfully (or already existed).');
     await client.query(createItemTable);
     console.log('SUCCESS: "items" table created successfully (or already existed).');
+    await client.query(createVipTable);
+    console.log('SUCCESS: "casper_vip" table created successfully (or already existed).');
     
     client.release();
     console.log('Tables created/verified.');

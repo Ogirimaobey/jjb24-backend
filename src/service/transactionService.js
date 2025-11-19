@@ -13,6 +13,7 @@ let lastFetched = 0;
 
 // Initialize a Flutterwave payment
 export const initializePayment = async (userId, amount, email, phone) => {
+  // console.log("UserId: ", userId, "Email: ", email, "Phone: ", phone);
 
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found.");
@@ -45,7 +46,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
       "Content-Type": "application/json",
     },
   });
-  console.log("Flutterwave initialize response:", response.data);
+  // console.log("Flutterwave initialize response:", response.data);
 
   return {
     paymentLink: response.data.data.link,
@@ -57,7 +58,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
 
 // Verify payment via Flutterwave webhook
 export const verifyPayment = async (req, secretHashFromEnv) => {
-  console.log("Verifying payment with Flutterwave webhook request body: ", req.body);
+  // console.log("Verifying payment with Flutterwave webhook request body: ", req.body);
   const flwSignature = req.headers["verif-hash"];
   if (!flwSignature || flwSignature !== secretHashFromEnv) {
     throw new Error("Invalid Flutterwave signature");
@@ -65,7 +66,7 @@ export const verifyPayment = async (req, secretHashFromEnv) => {
 
   const event = req.body;
   const { tx_ref, status, amount } = event.data;
-  console.log("Received event:", event.event, "Status:", status);
+  // console.log("Received event:", event.event, "Status:", status);
 
   const transaction = await findTransactionByReference(tx_ref);
   if (!transaction) throw new Error("Transaction not found");
