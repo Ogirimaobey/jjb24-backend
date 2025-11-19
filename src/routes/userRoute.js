@@ -112,6 +112,8 @@ router.get('/user_profile', verifyToken, async (req, res) => {
   }
 });
 
+
+
 // Get user earnings summary (today, yesterday, total)
 router.get('/earnings-summary', verifyToken, async (req, res) => {
   try {
