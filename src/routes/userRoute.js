@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, loginUser, getUserBalance, verifyUserOtp } from '../service/userService.js';
+import { registerUser, loginUser, getUserBalance, verifyUserOtp, getUserProfile} from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
 import { getUserEarningsSummary } from '../service/investmentService.js';
@@ -100,6 +100,15 @@ router.get('/check-auth', verifyToken, (req, res) => {
     });
 });
 
+//Get User Profile
+router.get('/user_profile', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const profile = await getUserProfile(userId);
+    // console.log("User profile sent:", profile);
+    res.status(200).json({ success: true, profile });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
 // Get user earnings summary (today, yesterday, total)
 router.get('/earnings-summary', verifyToken, async (req, res) => {
   try {
