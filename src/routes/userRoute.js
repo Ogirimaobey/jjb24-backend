@@ -109,6 +109,9 @@ router.get('/user_profile', verifyToken, async (req, res) => {
     res.status(200).json({ success: true, profile });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 // Get user earnings summary (today, yesterday, total)
 router.get('/earnings-summary', verifyToken, async (req, res) => {
   try {
