@@ -13,6 +13,7 @@ let lastFetched = 0;
 
 // Initialize a Flutterwave payment
 export const initializePayment = async (userId, amount, email, phone) => {
+  // console.log("UserId: ", userId, "Email: ", email, "Phone: ", phone);
 
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found.");
