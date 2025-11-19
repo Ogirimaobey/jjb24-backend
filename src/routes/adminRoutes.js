@@ -1,5 +1,5 @@
 import express from "express";
-import { registerAdmin, loginAdmin } from "../service/adminService.js";
+import { registerAdmin, loginAdmin, getAdminStats, getAllUsersForAdmin, getAllInvestmentsForAdmin } from "../service/adminService.js";
 import upload from '../middleware/upload.js';
 import { uploadItem, deleteItem, updateItem } from '../service/itemService.js';
 import { createVip, getAllVips, getVipById, updateVip, deleteVip } from '../service/vipService.js';
@@ -151,6 +151,38 @@ router.delete('/vip/:id', verifyToken, verifyAdmin, async (req, res) => {
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(404).json({ success: false, message: err.message });
+  }
+});
+
+// ========== ADMIN DASHBOARD ROUTES ==========
+
+// Get admin dashboard stats
+router.get('/stats', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const stats = await getAdminStats();
+    res.status(200).json({ success: true, ...stats });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get all users (for admin)
+router.get('/users', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const users = await getAllUsersForAdmin();
+    res.status(200).json(users);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get all investments (for admin)
+router.get('/investments', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const investments = await getAllInvestmentsForAdmin();
+    res.status(200).json(investments);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

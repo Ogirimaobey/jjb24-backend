@@ -2,6 +2,7 @@ import express from 'express';
 import { registerUser, loginUser, getUserBalance, verifyUserOtp } from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
+import { getUserEarningsSummary } from '../service/investmentService.js';
 
 
 const router = express.Router();
@@ -97,6 +98,17 @@ router.get('/check-auth', verifyToken, (req, res) => {
         success: true, 
         user: { username: req.user.userId }  
     });
+});
+
+// Get user earnings summary (today, yesterday, total)
+router.get('/earnings-summary', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const earnings = await getUserEarningsSummary(userId);
+    res.status(200).json({ success: true, ...earnings });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
 });
 
 export default router;
