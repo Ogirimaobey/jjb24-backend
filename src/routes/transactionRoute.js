@@ -39,7 +39,6 @@ router.post('/initialize', verifyToken, async (req, res) => {
 
 router.post("/verify", async (req, res) => {
   try {
-
     console.log("Webhook received request:", req.body);
 
     const signature = req.headers["verif-hash"];
