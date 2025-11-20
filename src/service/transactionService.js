@@ -7,6 +7,7 @@ dotenv.config();
 
 const FLW_BASE_URL = process.env.FLW_BASE_URL;
 const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY;
+
 // Simple cache to avoid fetching every time
 let bankCodeCache = {};
 let lastFetched = 0;
@@ -57,9 +58,13 @@ export const initializePayment = async (userId, amount, email, phone) => {
 
 
 // Verify payment via Flutterwave webhook
-export const verifyPayment = async (req, secretHashFromEnv) => {
-  // console.log("Verifying payment with Flutterwave webhook request body: ", req.body);
+export const verifyPayment = async (req) => {
+  const secretHashFromEnv = process.env.FLW_SECRET_HASH;
   const flwSignature = req.headers["verif-hash"];
+
+  console.log("secretHashFromEnv value:", secretHashFromEnv);
+  console.log("Webhook header verif-hash:", flwSignature);
+
   if (!flwSignature || flwSignature !== secretHashFromEnv) {
     throw new Error("Invalid Flutterwave signature");
   }
