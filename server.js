@@ -14,6 +14,11 @@ dotenv.config();
 
 const app = express();
 
+app.post("/api/payment/verify", express.raw({ type: "*/*" }), (req, res, next) => {
+  next(); 
+});
+
+
 // Allow multiple origins for local development
 const allowedOrigins = process.env.FRONTEND_ORIGIN 
   ? process.env.FRONTEND_ORIGIN.split(',')
@@ -33,7 +38,6 @@ app.use(cors({
   credentials: true
 }));
 
-app.use("/api/payment/verify", express.raw({ type: "*/*" }));
 
 app.use('/api/users', userRoutes);
 app.use('/api/payment', transactionRoutes);

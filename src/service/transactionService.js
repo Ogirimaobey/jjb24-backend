@@ -30,7 +30,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
     tx_ref: reference,
     amount,
     currency: "NGN",
-    redirect_url: "https://flutterwave.com/ng/",
+    redirect_url: "https://jjbwines.com/#home",
     customer: {
       email,
       phonenumber: phone,
@@ -47,8 +47,6 @@ export const initializePayment = async (userId, amount, email, phone) => {
       "Content-Type": "application/json",
     },
   });
-  // console.log("Flutterwave initialize response:", response.data);
-
   return {
     paymentLink: response.data.data.link,
     reference,
@@ -99,8 +97,6 @@ export const initializePayment = async (userId, amount, email, phone) => {
 // };
 
 
-
-
 export const verifyPayment = async (event) => {
   const { tx_ref, status, amount } = event.data;
 
@@ -127,12 +123,6 @@ export const verifyPayment = async (event) => {
 
   return { success: true, message: "Transaction verified and balance updated" };
 };
-
-
-
-
-
-
 
 // User initiates withdrawal 
 export const requestWithdrawal = async (userId, amount, bankName, accountNumber, accountName) => {

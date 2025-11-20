@@ -39,13 +39,13 @@ router.post('/initialize', verifyToken, async (req, res) => {
 
 router.post("/verify", async (req, res) => {
   try {
-    console.log("Webhook received request:", req.body);
+console.log("Webhook received request body:", req.body.toString());
 
     const signature = req.headers["verif-hash"];
     const secret = process.env.FLW_SECRET_HASH;
 
     if (!signature || signature !== secret) {
-      console.log("⚠ Wrong Secret Hash");
+      console.log("Wrong Secret Hash");
       return res.status(401).json({ success: false, message: "Invalid signature" });
     }
 
