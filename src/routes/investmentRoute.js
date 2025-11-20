@@ -55,6 +55,7 @@ router.post('/createVipInvestment/:vipId', verifyToken, async (req, res) => {
     let { vipId } = req.params;
 
     const casperVIPInvestment = await createVipInvestment(userId, vipId);
+    // console.log("Vip investment details", casperVIPInvestment)
     res.status(201).json({ success: true, data: casperVIPInvestment });
   } 
   catch (error) {

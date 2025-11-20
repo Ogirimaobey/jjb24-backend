@@ -23,18 +23,47 @@ router.post('/initialize', verifyToken, async (req, res) => {
 });
 
 // Flutterwave webhook to verify payment
+// router.post("/verify", async (req, res) => {
+//   try {
+//     console.log("Webhook received:", req.body);
+//     const result = await verifyPayment(req, process.env.FLW_SECRET_HASH);
+//     res.status(200).json(result);
+
+//   } 
+//   catch (err) {
+//     console.error("Webhook error:", err.message);
+//     res.status(400).json({ success: false, message: err.message });
+//   }
+// });
+
+
 router.post("/verify", async (req, res) => {
   try {
-    console.log("Webhook received:", req.body);
-    const result = await verifyPayment(req, process.env.FLW_SECRET_HASH);
-    res.status(200).json(result);
 
-  } 
-  catch (err) {
+    console.log("Webhook received request:", req.body);
+
+    const signature = req.headers["verif-hash"];
+    const secret = process.env.FLW_SECRET_HASH;
+
+    if (!signature || signature !== secret) {
+      console.log("⚠ Wrong Secret Hash");
+      return res.status(401).json({ success: false, message: "Invalid signature" });
+    }
+
+    const data = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
+    console.log("Webhook data:", data);
+
+    const result = await verifyPayment(data);
+    return res.status(200).json(result);
+
+  } catch (err) {
     console.error("Webhook error:", err.message);
-    res.status(400).json({ success: false, message: err.message });
+    return res.status(400).json({ success: false, message: err.message });
   }
 });
+
+
+
 
 // Get user balance
 router.get('/balance/:id',verifyToken, async (req, res) => {  
