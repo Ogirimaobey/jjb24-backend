@@ -1,6 +1,6 @@
 import axios from "axios";
 import dotenv from "dotenv";
-import { createTransaction, findTransactionByReference, updateTransactionStatus, createWithdrawalTransaction, getAllTransactionsByUserId, getWithdrawalTransactionsByUserId, getDepositTransactionsByUserId } from "../repositories/transactionRepository.js";
+import { createTransaction, findTransactionByReference, updateTransactionStatus, createWithdrawalTransaction, getAllTransactionsByUserId, getWithdrawalTransactionsByUserId, getDepositTransactionsByUserId, getPendingWithdrawals } from "../repositories/transactionRepository.js";
 import { findUserById, updateUserBalance } from "../repositories/userRepository.js";
 
 dotenv.config();
@@ -260,5 +260,15 @@ export const getUserDepositTransactions = async (userId) => {
     message: "Deposit transactions retrieved successfully",
     transactions,
     totalCount: transactions.length
+  };
+};
+
+// Get pending withdrawals for admin
+export const getPendingWithdrawalsForAdmin = async () => {
+  const withdrawals = await getPendingWithdrawals();
+  return {
+    message: "Pending withdrawals retrieved successfully",
+    withdrawals,
+    totalCount: withdrawals.length
   };
 };

@@ -3,6 +3,7 @@ import { registerAdmin, loginAdmin, getAdminStats, getAllUsersForAdmin, getAllIn
 import upload from '../middleware/upload.js';
 import { uploadItem, deleteItem, updateItem } from '../service/itemService.js';
 import { createVip, getAllVips, getVipById, updateVip, deleteVip } from '../service/vipService.js';
+import { getPendingWithdrawalsForAdmin } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -181,6 +182,16 @@ router.get('/investments', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const investments = await getAllInvestmentsForAdmin();
     res.status(200).json(investments);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get pending withdrawals (for admin)
+router.get('/withdrawals/pending', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const result = await getPendingWithdrawalsForAdmin();
+    res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
