@@ -55,7 +55,17 @@ export const createWithdrawal = async (userId, amount, reference) => {
 };
 
 export const getPendingWithdrawals = async () => {
-  const query = `SELECT * FROM transactions WHERE status = 'pending' AND type = 'withdrawal'`;
+  const query = `
+    SELECT 
+      t.*,
+      u.full_name,
+      u.phone_number,
+      u.email
+    FROM transactions t
+    INNER JOIN users u ON t.user_id = u.id
+    WHERE t.status = 'pending' AND t.type = 'withdrawal'
+    ORDER BY t.created_at DESC
+  `;
   const { rows } = await pool.query(query);
   return rows;
 };
