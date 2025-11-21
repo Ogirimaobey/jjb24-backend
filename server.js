@@ -45,6 +45,11 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/investments', investmentRoute);
 
+app.get("/ip", async (req, res) => {
+  const ip = await fetch("https://api.ipify.org").then(r => r.text());
+  res.send(ip);
+});
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
