@@ -55,14 +55,14 @@ export const updateTransactionStatus = async (tx_ref, status) => {
     );
 
     if (result.rowCount === 0) {
-      // console.error(" Transaction status update failed. No rows affected for tx_ref:", tx_ref);
+      console.error(" Transaction status update failed. No rows affected for tx_ref:", tx_ref);
     } else {
-      // console.log(" Transaction status updated:", result.rows[0]);
+      console.log(" Transaction status updated:", result.rows[0]);
     }
 
     return result;
   } catch (err) {
-    // console.error(" Error updating transaction status:", err.message);
+    console.error(" Error updating transaction status:", err.message);
     throw err;
   }
 };

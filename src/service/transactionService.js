@@ -133,40 +133,40 @@ export const verifyPayment = async (event) => {
     ];
 
     if (validSuccessEvents.includes(status) || validSuccessEvents.includes(event.event)) {
-      // console.log("✅ Payment marked successful for tx_ref:", tx_ref);
+      console.log("✅ Payment marked successful for tx_ref:", tx_ref);
 
       await updateTransactionStatus(tx_ref, "success");
 
       // STEP 6: User lookup
       const user = await findUserById(transaction.user_id);
       if (!user) {
-        // console.error("❌ User not found for transaction:", transaction);
+        console.error("❌ User not found for transaction:", transaction);
         return { success: false, message: "User not found" };
       }
-      // console.log("User found:", user);
+      console.log("User found:", user);
 
       // STEP 7: Balance update
       const newBalance = Number(user.balance) + Number(amount);
-      // console.log("Updating balance:", {
-      //   oldBalance: user.balance,
-      //   depositAmount: amount,
-      //   newBalance,
-      // });
+      console.log("Updating balance:", {
+        oldBalance: user.balance,
+        depositAmount: amount,
+        newBalance,
+      });
 
       await updateUserBalance(user.id, newBalance);
     } else if (status === "failed") {
-      // console.log("❌ Payment failed for tx_ref:", tx_ref);
+      console.log("❌ Payment failed for tx_ref:", tx_ref);
       await updateTransactionStatus(tx_ref, "failed");
     } else {
       console.warn("⚠ Unhandled event/status:", { status, event: event.event });
     }
 
     // STEP 8: Final response
-    // console.log("=== Webhook processing complete for tx_ref:", tx_ref, "===");
+    console.log("=== Webhook processing complete for tx_ref:", tx_ref, "===");
     return { success: true, message: "Transaction verified and balance updated" };
 
   } catch (err) {
-    // console.error("❌ Webhook error:", err.message, err.stack);
+    console.error("❌ Webhook error:", err.message, err.stack);
     return { success: false, message: "Internal error during webhook processing" };
   }
 };
