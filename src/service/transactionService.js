@@ -100,19 +100,19 @@ export const initializePayment = async (userId, amount, email, phone) => {
 export const verifyPayment = async (event) => {
   try {
     // STEP 1: Raw webhook payload
-    // console.log("=== Webhook event received ===");
-    // console.log(JSON.stringify(event, null, 2));
+    console.log("=== Webhook event received ===");
+    console.log(JSON.stringify(event, null, 2));
 
     // STEP 2: Validate payload
     if (!event || !event.data) {
-      console.error("❌ Invalid webhook payload:", event);
+      console.error(" Invalid webhook payload:", event);
       return { success: false, message: "Invalid webhook payload" };
     }
 
     // STEP 3: Extract fields
     const { tx_ref, status, amount } = event.data;
-    // console.log("Extracted fields:", { tx_ref, status, amount });
-    // console.log("Event type:", event.event);
+    console.log("Extracted fields:", { tx_ref, status, amount });
+    console.log("Event type:", event.event);
 
     // STEP 4: Transaction lookup
     const transaction = await findTransactionByReference(tx_ref);
@@ -120,7 +120,7 @@ export const verifyPayment = async (event) => {
       console.error(" Transaction not found for tx_ref:", tx_ref);
       return { success: false, message: "Transaction not found" };
     }
-    // console.log("Transaction found:", transaction);
+    console.log("Transaction found:", transaction);
 
     // STEP 5: Check event type + status
     const validSuccessEvents = [
