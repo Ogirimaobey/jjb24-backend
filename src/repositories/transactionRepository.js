@@ -36,13 +36,37 @@ export const findTransactionByReference = async (reference) => {
   return result.rows[0];
 };
 
-export const updateTransactionStatus = async (reference, status) => {
-  await pool.query(
-    'UPDATE transactions SET status = $1 WHERE reference = $2',
-    [status, reference]
-  );
+// export const updateTransactionStatus = async (reference, status) => {
+//   await pool.query(
+//     'UPDATE transactions SET status = $1 WHERE reference = $2',
+//     [status, reference]
+//   );
 
+// };
+
+
+
+
+export const updateTransactionStatus = async (tx_ref, status) => {
+  try {
+    const result = await pool.query(
+      "UPDATE transactions SET status = $1 WHERE reference = $2 RETURNING *",
+      [status, tx_ref]
+    );
+
+    if (result.rowCount === 0) {
+      // console.error(" Transaction status update failed. No rows affected for tx_ref:", tx_ref);
+    } else {
+      // console.log(" Transaction status updated:", result.rows[0]);
+    }
+
+    return result;
+  } catch (err) {
+    // console.error(" Error updating transaction status:", err.message);
+    throw err;
+  }
 };
+
 
 export const createWithdrawal = async (userId, amount, reference) => {
   const query = `

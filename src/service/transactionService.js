@@ -55,26 +55,25 @@ export const initializePayment = async (userId, amount, email, phone) => {
 };
 
 
-// Verify payment via Flutterwave webhook
-// export const verifyPayment = async (req) => {
-//   const secretHashFromEnv = process.env.FLW_SECRET_HASH;
-//   const flwSignature = req.headers["verif-hash"];
+// export const verifyPayment = async (event) => {
+//   const { tx_ref, status, amount } = event.data;
+//   console.log("event data: ", event.data);
+//   console.log("event: ", event);
 
-//   console.log("secretHashFromEnv value:", secretHashFromEnv);
-//   console.log("Webhook header verif-hash:", flwSignature);
 
-//   if (!flwSignature || flwSignature !== secretHashFromEnv) {
-//     throw new Error("Invalid Flutterwave signature");
+//   console.log("Webhook event received:", event);
+
+//   if (!event || !event.data) {
+//     throw new Error("Invalid webhook payload");
 //   }
 
-//   const event = req.body;
-//   const { tx_ref, status, amount } = event.data;
-//   // console.log("Received event:", event.event, "Status:", status);
+//   console.log("Verifying transaction with reference:", tx_ref);
 
 //   const transaction = await findTransactionByReference(tx_ref);
+//   consolwe.log("Found transaction: ", transaction);
 //   if (!transaction) throw new Error("Transaction not found");
 
-//    if (
+//   if (
 //     status === "successful" ||
 //     event.event === "transfer.completed" ||
 //     event.event === "payment.completed" ||
@@ -88,7 +87,6 @@ export const initializePayment = async (userId, amount, email, phone) => {
 //     const newBalance = Number(user.balance) + Number(amount);
 //     await updateUserBalance(user.id, newBalance);
 //   } 
-
 //   else if (status === "failed") {
 //     await updateTransactionStatus(tx_ref, "failed");
 //   }
@@ -97,32 +95,109 @@ export const initializePayment = async (userId, amount, email, phone) => {
 // };
 
 
+
+
 export const verifyPayment = async (event) => {
-  const { tx_ref, status, amount } = event.data;
+  try {
+    // STEP 1: Raw webhook payload
+    // console.log("=== Webhook event received ===");
+    // console.log(JSON.stringify(event, null, 2));
 
-  const transaction = await findTransactionByReference(tx_ref);
-  if (!transaction) throw new Error("Transaction not found");
+    // STEP 2: Validate payload
+    if (!event || !event.data) {
+      console.error("❌ Invalid webhook payload:", event);
+      return { success: false, message: "Invalid webhook payload" };
+    }
 
-  if (
-    status === "successful" ||
-    event.event === "transfer.completed" ||
-    event.event === "payment.completed" ||
-    event.event === "charge.completed" ||
-    event.event === "payment.success" ||
-    event.event === "transfer.success"
-  ) {
-    await updateTransactionStatus(tx_ref, "success");
+    // STEP 3: Extract fields
+    const { tx_ref, status, amount } = event.data;
+    // console.log("Extracted fields:", { tx_ref, status, amount });
+    // console.log("Event type:", event.event);
 
-    const user = await findUserById(transaction.user_id);
-    const newBalance = Number(user.balance) + Number(amount);
-    await updateUserBalance(user.id, newBalance);
-  } 
-  else if (status === "failed") {
-    await updateTransactionStatus(tx_ref, "failed");
+    // STEP 4: Transaction lookup
+    const transaction = await findTransactionByReference(tx_ref);
+    if (!transaction) {
+      console.error(" Transaction not found for tx_ref:", tx_ref);
+      return { success: false, message: "Transaction not found" };
+    }
+    // console.log("Transaction found:", transaction);
+
+    // STEP 5: Check event type + status
+    const validSuccessEvents = [
+      "successful",
+      "transfer.completed",
+      "payment.completed",
+      "charge.completed",
+      "payment.success",
+      "transfer.success",
+    ];
+
+    if (validSuccessEvents.includes(status) || validSuccessEvents.includes(event.event)) {
+      // console.log("✅ Payment marked successful for tx_ref:", tx_ref);
+
+      await updateTransactionStatus(tx_ref, "success");
+
+      // STEP 6: User lookup
+      const user = await findUserById(transaction.user_id);
+      if (!user) {
+        // console.error("❌ User not found for transaction:", transaction);
+        return { success: false, message: "User not found" };
+      }
+      // console.log("User found:", user);
+
+      // STEP 7: Balance update
+      const newBalance = Number(user.balance) + Number(amount);
+      // console.log("Updating balance:", {
+      //   oldBalance: user.balance,
+      //   depositAmount: amount,
+      //   newBalance,
+      // });
+
+      await updateUserBalance(user.id, newBalance);
+    } else if (status === "failed") {
+      // console.log("❌ Payment failed for tx_ref:", tx_ref);
+      await updateTransactionStatus(tx_ref, "failed");
+    } else {
+      console.warn("⚠ Unhandled event/status:", { status, event: event.event });
+    }
+
+    // STEP 8: Final response
+    // console.log("=== Webhook processing complete for tx_ref:", tx_ref, "===");
+    return { success: true, message: "Transaction verified and balance updated" };
+
+  } catch (err) {
+    // console.error("❌ Webhook error:", err.message, err.stack);
+    return { success: false, message: "Internal error during webhook processing" };
   }
-
-  return { success: true, message: "Transaction verified and balance updated" };
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // User initiates withdrawal 
 export const requestWithdrawal = async (userId, amount, bankName, accountNumber, accountName) => {

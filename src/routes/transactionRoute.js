@@ -39,24 +39,27 @@ router.post('/initialize', verifyToken, async (req, res) => {
 
 router.post("/verify", async (req, res) => {
   try {
-console.log("Webhook received request body:", req.body.toString());
+    // console.log("Webhook received request body:", req.body.toString());
 
     const signature = req.headers["verif-hash"];
+    // console.log("Received signature:", signature);
+
     const secret = process.env.FLW_SECRET_HASH;
+    // console.log("Expected secret:", secret);
 
     if (!signature || signature !== secret) {
-      console.log("Wrong Secret Hash");
+      // console.log("Wrong Secret Hash");
       return res.status(401).json({ success: false, message: "Invalid signature" });
     }
 
     const data = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
-    console.log("Webhook data:", data);
+    // console.log("Webhook data:", data);
 
     const result = await verifyPayment(data);
     return res.status(200).json(result);
 
   } catch (err) {
-    console.error("Webhook error:", err.message);
+    // console.error("Webhook error:", err.message);
     return res.status(400).json({ success: false, message: err.message });
   }
 });
