@@ -29,7 +29,8 @@ router.post('/login', async (req, res) => {
   sameSite: 'None',
   maxAge: 1000*60*30, 
 });
-res.json({ success: true, user });
+// Also return token in response so frontend can use it in Authorization header
+res.json({ success: true, token, user });
   } 
   catch (error) {
     res.status(401).json({ success: false, message: error.message });

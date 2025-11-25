@@ -8,16 +8,29 @@ const router = express.Router();
 // User initiates payment
 router.post('/initialize', verifyToken, async (req, res) => {
   try {
+    console.log('[Payment Route] ===== PAYMENT INITIALIZATION REQUEST =====');
+    console.log('[Payment Route] Request body:', req.body);
+    console.log('[Payment Route] User from token:', { id: req.user.id, email: req.user.email, phone: req.user.phone });
+    
     const {amount} = req.body;
     const {id: userId, email, phone } = req.user;
+    
+    console.log('[Payment Route] Initializing payment for:', { userId, amount, email, phone });
+    
     const data = await initializePayment(userId, amount, email, phone);
+    
+    console.log('[Payment Route] ✅ Payment initialized successfully');
+    console.log('[Payment Route] Payment link:', data.paymentLink);
+    
     res.status(200).json({
       success: true,
       message: 'Payment initialized',
       data,
     });
   } catch (err) {
-    console.error(err);
+    console.error('[Payment Route] ❌ Payment initialization failed:');
+    console.error('[Payment Route] Error:', err.message);
+    console.error('[Payment Route] Stack:', err.stack);
     res.status(500).json({ success: false, message: err.message });
   }
 });
