@@ -18,20 +18,6 @@ export const findUserByEmail = async (email) => {
   return rows[0];
 };
 
-// export const updateUserBalance = async (userId, newBalance, client = pool) => {
-//   const query = `
-//     UPDATE users
-//     SET balance = $1
-//     WHERE id = $2
-//     RETURNING *;
-//   `;
-//   const { rows } = await client.query(query, [newBalance, userId]);
-//   return rows[0];
-// };
-
-
-
-
 
 // Update user balance
 export const updateUserBalance = async (userId, newBalance) => {
@@ -53,9 +39,6 @@ export const updateUserBalance = async (userId, newBalance) => {
     throw err;
   }
 };
-
-
-
 
 export const findUserById = async (userId) => {
   const query = `SELECT * FROM users WHERE id = $1`;
