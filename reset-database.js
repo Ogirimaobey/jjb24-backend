@@ -19,7 +19,6 @@ const resetTables = async () => {
       );
     `);
 
-    console.log("Database reset successfully — except user Babatunde.");
     process.exit(0);
   } catch (error) {
     console.error("Error resetting database:", error.message);
