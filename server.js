@@ -14,6 +14,11 @@ dotenv.config();
 
 const app = express();
 
+app.post("/api/payment/verify", express.raw({ type: "*/*" }), (req, res, next) => {
+  next(); 
+});
+
+
 // Allow multiple origins for local development
 const allowedOrigins = process.env.FRONTEND_ORIGIN 
   ? process.env.FRONTEND_ORIGIN.split(',')
@@ -33,7 +38,6 @@ app.use(cors({
   credentials: true
 }));
 
-app.use("/api/payment/verify", express.raw({ type: "*/*" }));
 
 app.use('/api/users', userRoutes);
 app.use('/api/payment', transactionRoutes);
@@ -41,11 +45,16 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/investments', investmentRoute);
 
+app.get("/ip", async (req, res) => {
+  const ip = await fetch("https://api.ipify.org").then(r => r.text());
+  res.send(ip);
+});
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // Runs every 24 hours
-cron.schedule('* * * * *', async () => {
+cron.schedule('0 0 * * *', async () => {
   await processDailyEarnings();
 });

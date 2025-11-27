@@ -27,7 +27,10 @@ router.post("/verify", async (req, res) => {
   try {
 
     const signature = req.headers["verif-hash"];
+    console.log("Received signature:", signature);
+
     const secret = process.env.FLW_SECRET_HASH;
+    console.log("Expected secret:", secret);
 
     if (!signature || signature !== secret) {
       return res.status(401).json({ success: false, message: "Invalid signature" });

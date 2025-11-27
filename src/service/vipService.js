@@ -69,6 +69,7 @@ export const updateVip = async (vipId, vipData, imageUrl) => {
   };
 };
 
+
 // Admin deletes a CASPERVIP product
 export const deleteVip = async (vipId) => {
   const existingVip = await pool.query(getVipByIdQuery, [vipId]);
