@@ -80,8 +80,3 @@ export const getRecentUsers = async (limit = 10) => {
   return rows;
 };
 
-// export const updateUserBalance = async (userId, newBalance) => {
-//   const query = `UPDATE users SET balance = $1 WHERE id = $2 RETURNING *;`;
-//   const { rows } = await pool.query(query, [newBalance, userId]);
-//   return rows[0];
-// };

@@ -53,13 +53,11 @@ export const getVipById = async (vipId) => {
 export const updateVip = async (vipId, vipData, imageUrl) => {
   const { name, price, daily_earnings, duration_days, total_returns } = vipData;
 
-  // Check if VIP exists
   const existingVip = await pool.query(getVipByIdQuery, [vipId]);
   if (existingVip.rows.length === 0) {
     throw new Error("CASPERVIP not found");
   }
 
-  // Use existing image if no new image provided (COALESCE in SQL handles this)
   const finalImageUrl = imageUrl || existingVip.rows[0].image;
 
   const values = [vipId, name, price, daily_earnings, duration_days, total_returns, finalImageUrl];
