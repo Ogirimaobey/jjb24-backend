@@ -7,13 +7,23 @@ dotenv.config();
 
 const FLW_BASE_URL = process.env.FLW_BASE_URL;
 const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY;
-
+const FLW_PUBLIC_KEY = process.env.FLW_PUBLIC_KEY;
 // Simple cache to avoid fetching every time
 let bankCodeCache = {};
 let lastFetched = 0;
 
 // Initialize a Flutterwave payment
 export const initializePayment = async (userId, amount, email, phone) => {
+  // Check if Flutterwave keys are configured
+  if (!FLW_SECRET_KEY) {
+    console.error('[initializePayment] FLW_SECRET_KEY is not set');
+    throw new Error("Payment service configuration error. Please contact support.");
+  }
+
+  if (!FLW_BASE_URL) {
+    console.error('[initializePayment] FLW_BASE_URL is not set');
+    throw new Error("Payment service configuration error. Please contact support.");
+  }
 
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found.");
@@ -25,6 +35,9 @@ export const initializePayment = async (userId, amount, email, phone) => {
   const reference = `TX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   const transaction = await createTransaction(userId, amount, reference);
 
+  // Get user's full name for customer details
+  const customerName = user.full_name || email.split('@')[0] || 'Customer';
+
   const payload = {
     tx_ref: reference,
     amount,
@@ -33,6 +46,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
     customer: {
       email,
       phonenumber: phone,
+      name: customerName, // Added: Flutterwave may require customer name
     },
     customizations: {
       title: "JJB24 Deposit",
@@ -40,17 +54,55 @@ export const initializePayment = async (userId, amount, email, phone) => {
     },
   };
 
+  // Note: public_key is NOT needed in payload for API-created hosted payment links
+  // Flutterwave automatically uses the public key associated with the account
+
+  try {
+    console.log('[initializePayment] Initializing payment with Flutterwave...');
+    console.log('[initializePayment] Amount:', amount, 'Reference:', reference);
+    console.log('[initializePayment] Payload:', JSON.stringify(payload, null, 2));
+
   const response = await axios.post(`${FLW_BASE_URL}/payments`, payload, {
     headers: {
       Authorization: `Bearer ${FLW_SECRET_KEY}`,
       "Content-Type": "application/json",
     },
   });
+console.log("[initializePayment] Flutterwave response status:", response.status);
+    console.log("[initializePayment] Flutterwave response data:", JSON.stringify(response.data, null, 2));
+
+    if (!response.data || !response.data.data || !response.data.data.link) {
+      console.error('[initializePayment] Invalid response from Flutterwave:', response.data);
+      throw new Error("Failed to generate payment link. Please try again.");
+    }
+
+    const paymentLink = response.data.data.link;
+    console.log("[initializePayment] ✅ Payment link generated successfully:");
+    console.log("[initializePayment] Payment Link:", paymentLink);
+    console.log("[initializePayment] Payment Status:", response.data.status);
+    console.log("[initializePayment] Payment Message:", response.data.message);
   return {
-    paymentLink: response.data.data.link,
+      paymentLink: paymentLink,
     reference,
     transaction,
   };
+  } catch (error) {
+    console.error('[initializePayment] Flutterwave API error:');
+    console.error('[initializePayment] Error message:', error.message);
+    console.error('[initializePayment] Error response:', error.response?.data);
+    console.error('[initializePayment] Error status:', error.response?.status);
+    
+    if (error.response?.status === 401) {
+      throw new Error("Invalid payment gateway credentials. Please contact support.");
+    } else if (error.response?.status === 400) {
+      const errorMsg = error.response?.data?.message || "Invalid payment request. Please check your details.";
+      throw new Error(errorMsg);
+    } else if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    } else {
+      throw new Error(`Payment initialization failed: ${error.message}`);
+    }
+  }
 };
 
 // Verify payment and update user balance
