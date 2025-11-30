@@ -35,19 +35,32 @@ router.post('/initialize', verifyToken, async (req, res) => {
   }
 });
 
-// Flutterwave webhook to verify payment
+
 router.post("/verify", async (req, res) => {
   try {
-    console.log("Webhook received:", req.body);
-    const result = await verifyPayment(req, process.env.FLW_SECRET_HASH);
-    res.status(200).json(result);
 
-  } 
-  catch (err) {
-    console.error("Webhook error:", err.message);
-    res.status(400).json({ success: false, message: err.message });
+    const signature = req.headers["verif-hash"];
+    console.log("Received signature:", signature);
+
+    const secret = process.env.FLW_SECRET_HASH;
+    console.log("Expected secret:", secret);
+
+    if (!signature || signature !== secret) {
+      return res.status(401).json({ success: false, message: "Invalid signature" });
+    }
+
+    const data = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
+
+    const result = await verifyPayment(data);
+    return res.status(200).json(result);
+
+  } catch (err) {
+    return res.status(400).json({ success: false, message: err.message });
   }
 });
+
+
+
 
 // Get user balance
 router.get('/balance/:id',verifyToken, async (req, res) => {  
@@ -55,11 +68,9 @@ router.get('/balance/:id',verifyToken, async (req, res) => {
     const userId = req.params;
     if (!userId) {
       return res.status(401).json({ message: 'Unauthorized: User ID missing' });}
-    console.log(`Fetching balance for user ID: ${userId}`);  
-    const balance = await getUserBalance(userId);
+      const balance = await getUserBalance(userId);
     return res.json({ balance });
   } catch (err) {
-    console.error(`Balance fetch failed for user ${req.params || 'unknown'}:`, err); 
      return res.status(500).json({ message: 'Server error' }); }
 }
 );

@@ -18,17 +18,27 @@ export const findUserByEmail = async (email) => {
   return rows[0];
 };
 
-export const updateUserBalance = async (userId, newBalance, client = pool) => {
-  const query = `
-    UPDATE users
-    SET balance = $1
-    WHERE id = $2
-    RETURNING *;
-  `;
-  const { rows } = await client.query(query, [newBalance, userId]);
-  return rows[0];
-};
 
+// Update user balance
+export const updateUserBalance = async (userId, newBalance) => {
+  try {
+    const result = await pool.query(
+      "UPDATE users SET balance = $1 WHERE id = $2 RETURNING *",
+      [newBalance, userId]
+    );
+
+    if (result.rowCount === 0) {
+      console.error(" User balance update failed. No rows affected for userId:", userId);
+    } else {
+      console.log("User balance updated:", result.rows[0]);
+    }
+
+    return result;
+  } catch (err) {
+    console.error(" Error updating user balance:", err.message);
+    throw err;
+  }
+};
 
 export const findUserById = async (userId) => {
   const query = `SELECT * FROM users WHERE id = $1`;
@@ -80,8 +90,3 @@ export const getRecentUsers = async (limit = 10) => {
   return rows;
 };
 
-// export const updateUserBalance = async (userId, newBalance) => {
-//   const query = `UPDATE users SET balance = $1 WHERE id = $2 RETURNING *;`;
-//   const { rows } = await pool.query(query, [newBalance, userId]);
-//   return rows[0];
-// };

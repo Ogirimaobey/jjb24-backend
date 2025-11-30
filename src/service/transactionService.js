@@ -42,7 +42,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
     tx_ref: reference,
     amount,
     currency: "NGN",
-    redirect_url: "https://flutterwave.com/ng/",
+    redirect_url: "https://jjbwines.com/#home",
     customer: {
       email,
       phonenumber: phone,
@@ -68,8 +68,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
       "Content-Type": "application/json",
     },
   });
-    
-    console.log("[initializePayment] Flutterwave response status:", response.status);
+console.log("[initializePayment] Flutterwave response status:", response.status);
     console.log("[initializePayment] Flutterwave response data:", JSON.stringify(response.data, null, 2));
 
     if (!response.data || !response.data.data || !response.data.data.link) {
@@ -82,7 +81,6 @@ export const initializePayment = async (userId, amount, email, phone) => {
     console.log("[initializePayment] Payment Link:", paymentLink);
     console.log("[initializePayment] Payment Status:", response.data.status);
     console.log("[initializePayment] Payment Message:", response.data.message);
-
   return {
       paymentLink: paymentLink,
     reference,
@@ -107,44 +105,80 @@ export const initializePayment = async (userId, amount, email, phone) => {
   }
 };
 
+// Verify payment and update user balance
+export const verifyPayment = async (event) => {
+  try {
+    // STEP 1: Raw webhook payload
+    console.log("=== Webhook event received ===");
+    console.log(JSON.stringify(event, null, 2));
 
-// Verify payment via Flutterwave webhook
-export const verifyPayment = async (req, secretHashFromEnv) => {
-  console.log("Verifying payment with Flutterwave webhook request body: ", req.body);
-  const flwSignature = req.headers["verif-hash"];
-  if (!flwSignature || flwSignature !== secretHashFromEnv) {
-    throw new Error("Invalid Flutterwave signature");
+    // STEP 2: Validate payload
+    if (!event || !event.data) {
+      console.error(" Invalid webhook payload:", event);
+      return { success: false, message: "Invalid webhook payload" };
+    }
+
+    // STEP 3: Extract fields
+    const { tx_ref, status, amount } = event.data;
+    console.log("Extracted fields:", { tx_ref, status, amount });
+    console.log("Event type:", event.event);
+
+    // STEP 4: Transaction lookup
+    const transaction = await findTransactionByReference(tx_ref);
+    if (!transaction) {
+      console.error(" Transaction not found for tx_ref:", tx_ref);
+      return { success: false, message: "Transaction not found" };
+    }
+    console.log("Transaction found:", transaction);
+
+    // STEP 5: Check event type + status
+    const validSuccessEvents = [
+      "successful",
+      "transfer.completed",
+      "payment.completed",
+      "charge.completed",
+      "payment.success",
+      "transfer.success",
+    ];
+
+    if (validSuccessEvents.includes(status) || validSuccessEvents.includes(event.event)) {
+      console.log("✅ Payment marked successful for tx_ref:", tx_ref);
+
+      await updateTransactionStatus(tx_ref, "success");
+
+      // STEP 6: User lookup
+      const user = await findUserById(transaction.user_id);
+      if (!user) {
+        console.error("❌ User not found for transaction:", transaction);
+        return { success: false, message: "User not found" };
+      }
+      console.log("User found:", user);
+
+      // STEP 7: Balance update
+      const newBalance = Number(user.balance) + Number(amount);
+      console.log("Updating balance:", {
+        oldBalance: user.balance,
+        depositAmount: amount,
+        newBalance,
+      });
+
+      await updateUserBalance(user.id, newBalance);
+    } else if (status === "failed") {
+      console.log("❌ Payment failed for tx_ref:", tx_ref);
+      await updateTransactionStatus(tx_ref, "failed");
+    } else {
+      console.warn("⚠ Unhandled event/status:", { status, event: event.event });
+    }
+
+    // STEP 8: Final response
+    console.log("=== Webhook processing complete for tx_ref:", tx_ref, "===");
+    return { success: true, message: "Transaction verified and balance updated" };
+
+  } catch (err) {
+    console.error("❌ Webhook error:", err.message, err.stack);
+    return { success: false, message: "Internal error during webhook processing" };
   }
-
-  const event = req.body;
-  const { tx_ref, status, amount } = event.data;
-  console.log("Received event:", event.event, "Status:", status);
-
-  const transaction = await findTransactionByReference(tx_ref);
-  if (!transaction) throw new Error("Transaction not found");
-
-   if (
-    status === "successful" ||
-    event.event === "transfer.completed" ||
-    event.event === "payment.completed" ||
-    event.event === "charge.completed" ||
-    event.event === "payment.success" ||
-    event.event === "transfer.success"
-  ) {
-    await updateTransactionStatus(tx_ref, "success");
-
-    const user = await findUserById(transaction.user_id);
-    const newBalance = Number(user.balance) + Number(amount);
-    await updateUserBalance(user.id, newBalance);
-  } 
-
-  else if (status === "failed") {
-    await updateTransactionStatus(tx_ref, "failed");
-  }
-
-  return { success: true, message: "Transaction verified and balance updated" };
 };
-
 
 // User initiates withdrawal 
 export const requestWithdrawal = async (userId, amount, bankName, accountNumber, accountName) => {
@@ -165,7 +199,6 @@ export const requestWithdrawal = async (userId, amount, bankName, accountNumber,
     accountNumber,
     accountName
   );
-  // console.log("Created withdrawal transaction:", transaction);
 
   const newBalance = Number(user.balance) - Number(amount);
   await updateUserBalance(userId, newBalance);
@@ -177,11 +210,9 @@ export const requestWithdrawal = async (userId, amount, bankName, accountNumber,
 };
 
 
-
 // Admin approves or rejects withdrawal
 export const approveWithdrawal = async (reference, approve = true) => {
   const transaction = await findTransactionByReference(reference);
-  // console.log("Transaction details:", transaction);
   if (!transaction) throw new Error("Transaction not found");
 
   if (transaction.status !== "pending") throw new Error("Already proccessed");
@@ -252,7 +283,6 @@ const getBankCode = async (bankName) => {
       headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
     });
 
-    // console.log("Fetched bank list from Flutterwave = ", response.data);
     bankCodeCache = {};
     response.data.data.forEach((bank) => {
       bankCodeCache[bank.name.toLowerCase()] = bank.code;

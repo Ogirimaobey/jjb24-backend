@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, loginUser, getUserBalance, verifyUserOtp } from '../service/userService.js';
+import { registerUser, loginUser, getUserBalance, verifyUserOtp, getUserProfile} from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
 import { getUserEarningsSummary } from '../service/investmentService.js';
@@ -23,12 +23,13 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { token, user } = await loginUser(req.body);
-  res.cookie('authToken', token, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'None',
-  maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days to match token expiration
-});
+    
+res.cookie('authToken', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'None',
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days to match token expiration
+  });
 // Also return token in response so frontend can use it in Authorization header
 res.json({ success: true, token, user });
   } 
@@ -36,6 +37,7 @@ res.json({ success: true, token, user });
     res.status(401).json({ success: false, message: error.message });
   }
 });
+
 // User logout
 router.post('/logout', (req, res) => {
   res.clearCookie('authToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Strict' });
@@ -98,6 +100,19 @@ router.get('/check-auth', verifyToken, (req, res) => {
         user: { username: req.user.userId }  
     });
 });
+
+//Get User Profile
+router.get('/user_profile', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const profile = await getUserProfile(userId);
+    // console.log("User profile sent:", profile);
+    res.status(200).json({ success: true, profile });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 
 // Get user earnings summary (today, yesterday, total)
 router.get('/earnings-summary', verifyToken, async (req, res) => {
