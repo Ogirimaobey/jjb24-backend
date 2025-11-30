@@ -27,7 +27,7 @@ router.post('/login', async (req, res) => {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'None',
-  maxAge: 1000*60*30, 
+  maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days to match token expiration
 });
 // Also return token in response so frontend can use it in Authorization header
 res.json({ success: true, token, user });

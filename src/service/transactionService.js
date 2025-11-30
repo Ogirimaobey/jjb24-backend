@@ -61,13 +61,13 @@ export const initializePayment = async (userId, amount, email, phone) => {
     console.log('[initializePayment] Initializing payment with Flutterwave...');
     console.log('[initializePayment] Amount:', amount, 'Reference:', reference);
     console.log('[initializePayment] Payload:', JSON.stringify(payload, null, 2));
-    
-    const response = await axios.post(`${FLW_BASE_URL}/payments`, payload, {
-      headers: {
-        Authorization: `Bearer ${FLW_SECRET_KEY}`,
-        "Content-Type": "application/json",
-      },
-    });
+
+  const response = await axios.post(`${FLW_BASE_URL}/payments`, payload, {
+    headers: {
+      Authorization: `Bearer ${FLW_SECRET_KEY}`,
+      "Content-Type": "application/json",
+    },
+  });
     
     console.log("[initializePayment] Flutterwave response status:", response.status);
     console.log("[initializePayment] Flutterwave response data:", JSON.stringify(response.data, null, 2));
@@ -83,11 +83,11 @@ export const initializePayment = async (userId, amount, email, phone) => {
     console.log("[initializePayment] Payment Status:", response.data.status);
     console.log("[initializePayment] Payment Message:", response.data.message);
 
-    return {
+  return {
       paymentLink: paymentLink,
-      reference,
-      transaction,
-    };
+    reference,
+    transaction,
+  };
   } catch (error) {
     console.error('[initializePayment] Flutterwave API error:');
     console.error('[initializePayment] Error message:', error.message);
