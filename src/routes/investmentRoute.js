@@ -27,7 +27,6 @@ router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
     const userId = req.user.id;
     let { itemId } = req.params;
     
-    // Validate itemId is a number
     itemId = Number(itemId);
     if (isNaN(itemId) || itemId <= 0) {
       return res.status(400).json({ 
