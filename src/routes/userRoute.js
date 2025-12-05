@@ -22,13 +22,15 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { token, user } = await loginUser(req.body);
-    res.cookie('authToken', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'None',
-      maxAge: 1000*60*30, 
-    });
-    res.json({ success: true, user });
+    
+res.cookie('authToken', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'None',
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days to match token expiration
+  });
+// Also return token in response so frontend can use it in Authorization header
+res.json({ success: true, token, user });
   } 
   catch (error) {
     res.status(401).json({ success: false, message: error.message });
