@@ -104,4 +104,3 @@ export const getRecentUsers = async (limit = 10) => {
   const { rows } = await pool.query(query, [limit]);
   return rows;
 };
-
