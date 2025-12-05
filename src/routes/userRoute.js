@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, loginUser, getUserBalance, verifyUserOtp, getUserProfile} from '../service/userService.js';
+import { registerUser, loginUser, getUserBalance, editUserEmail, verifyUserOtp, getUserProfile} from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
 import { getUserEarningsSummary } from '../service/investmentService.js';
@@ -116,6 +116,20 @@ router.get('/earnings-summary', verifyToken, async (req, res) => {
     res.status(200).json({ success: true, ...earnings });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+
+// Edit User Email
+router.put('/edit-email', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { newEmail } = req.body;
+    const result = await editUserEmail(userId, newEmail);
+    res.status(200).json(result);
+  } catch (error) {
+    console.log("error message", error.message);
+    res.status(400).json({ success: false, message: error.message });
   }
 });
 
