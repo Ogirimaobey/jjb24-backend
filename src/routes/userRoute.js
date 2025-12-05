@@ -28,7 +28,7 @@ router.post('/login', async (req, res) => {
       sameSite: 'None',
     maxAge: 1000 * 60 * 60 * 24 * 7, 
     });
-    res.json({ success: true, user });
+    res.json({ success: true, token, user });
   } 
   catch (error) {
     res.status(401).json({ success: false, message: error.message });
