@@ -27,15 +27,15 @@ export const updateUserBalance = async (userId, newBalance) => {
       [newBalance, userId]
     );
 
-    if (result.rowCount === 0) {
-      console.error(" User balance update failed. No rows affected for userId:", userId);
-    } else {
-      console.log("User balance updated:", result.rows[0]);
-    }
+    // if (result.rowCount === 0) {
+    //   console.error(" User balance update failed. No rows affected for userId:", userId);
+    // } else {
+    //   console.log("User balance updated:", result.rows[0]);
+    // }
 
     return result;
   } catch (err) {
-    console.error(" Error updating user balance:", err.message);
+    // console.error(" Error updating user balance:", err.message);
     throw err;
   }
 };

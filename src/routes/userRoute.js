@@ -9,7 +9,6 @@ const router = express.Router();
 
 // User registration
 router.post('/register', async (req, res) => {
-  // const { fullName, phone, email, password, referralCode } = req.body;  
   try {
     const user = await registerUser(req.body);
     res.status(201).json({ success: true, user });
@@ -23,15 +22,13 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { token, user } = await loginUser(req.body);
-    
-res.cookie('authToken', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'None',
-    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days to match token expiration
-  });
-// Also return token in response so frontend can use it in Authorization header
-res.json({ success: true, token, user });
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'None',
+    maxAge: 1000 * 60 * 60 * 24 * 7, 
+    });
+    res.json({ success: true, user });
   } 
   catch (error) {
     res.status(401).json({ success: false, message: error.message });
@@ -49,7 +46,6 @@ router.post('/logout', (req, res) => {
 router.get("/balance", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id; 
-
     const balance = await getUserBalance(userId);
     res.status(200).json({success: true, balance});
   } catch (error) {
@@ -94,7 +90,6 @@ router.get('/item/:id', verifyToken, async (req, res) => {
 
 //Cookies -Authentication
 router.get('/check-auth', verifyToken, (req, res) => {
-    // If middleware passes, user is auth'd—send minimal data
     res.json({ 
         success: true, 
         user: { username: req.user.userId }  
@@ -106,7 +101,6 @@ router.get('/user_profile', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const profile = await getUserProfile(userId);
-    // console.log("User profile sent:", profile);
     res.status(200).json({ success: true, profile });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
