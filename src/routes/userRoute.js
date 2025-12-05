@@ -1,4 +1,5 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { registerUser, loginUser, getUserBalance, verifyUserOtp, getUserProfile} from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
@@ -22,18 +23,42 @@ router.post('/register', async (req, res) => {
 // User login
 router.post('/login', async (req, res) => {
   try {
+    console.log('[Login Route] ===== LOGIN REQUEST =====');
+    console.log('[Login Route] JWT_SECRET exists:', !!process.env.JWT_SECRET);
+    console.log('[Login Route] JWT_SECRET length:', process.env.JWT_SECRET?.length || 0);
+    
     const { token, user } = await loginUser(req.body);
     
-res.cookie('authToken', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'None',
-    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days to match token expiration
-  });
-// Also return token in response so frontend can use it in Authorization header
-res.json({ success: true, token, user });
+    console.log('[Login Route] Login successful');
+    console.log('[Login Route] Token generated:', !!token);
+    console.log('[Login Route] Token length:', token?.length || 0);
+    console.log('[Login Route] User ID:', user?.id);
+    
+    // Verify the token can be decoded (sanity check)
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('[Login Route] Token verification test passed');
+      console.log('[Login Route] Token expires at:', new Date(decoded.exp * 1000).toISOString());
+    } catch (verifyErr) {
+      console.error('[Login Route] Token verification test FAILED!');
+      console.error('[Login Route] Error:', verifyErr.message);
+      throw new Error('Failed to generate valid token. Please contact support.');
+    }
+    
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'None',
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days to match token expiration
+    });
+    
+    console.log('[Login Route] Cookie set with maxAge: 7 days');
+    
+    // Also return token in response so frontend can use it in Authorization header
+    res.json({ success: true, token, user });
   } 
   catch (error) {
+    console.error('[Login Route] Login failed:', error.message);
     res.status(401).json({ success: false, message: error.message });
   }
 });
