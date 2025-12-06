@@ -28,7 +28,13 @@ export const createInvestment = async (userId, itemId) => {
     const dailyEarning = item.dailyincome;
 
     const investment = await insertInvestment(
-      { userId, itemId, dailyEarning, totalEarning: 0 },
+      {
+        userId,
+        itemId: item.id,              
+        casperVipId: null,       
+        dailyEarning: dailyEarning,
+        totalEarning: 0
+      },
       client
     );
 
@@ -54,7 +60,7 @@ export const createVipInvestment = async (userId, vipId) => {
     const { rows } = await client.query(getVipByIdQuery, [vipId]);
     const vip = rows[0];
 
-    // console.log('VIP details from services: ', vip);
+    console.log('VIP details from services: ', vip);
 
     if (!vip) throw new Error('CASPERVIP product not found');
     if (Number(user.balance) < Number(vip.price)) {
@@ -65,10 +71,15 @@ export const createVipInvestment = async (userId, vipId) => {
 
     const dailyEarning = vip.daily_earnings;
     const investment = await insertInvestment(
-      { userId, itemId: vipId, dailyEarning, totalEarning: 0 },
+      {
+        userId,
+        itemId: null,              
+        casperVipId: vip.id,       
+        dailyEarning: dailyEarning,
+        totalEarning: 0
+      },
       client
     );
-
     // console.log('Created CASPERVIP investment: ', investment);
 
     await client.query('COMMIT');
