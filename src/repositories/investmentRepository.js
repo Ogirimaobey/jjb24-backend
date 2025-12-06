@@ -1,13 +1,19 @@
 import pool from '../config/database.js';
 
-export const insertInvestment = async ({ userId, itemId, dailyEarning, totalEarning }, client = pool) => {
-  const query = `
-    INSERT INTO investments (user_id, item_id, daily_earning, total_earning)
-    VALUES ($1, $2, $3, $4)
+export const insertInvestment = async (
+  { userId, itemId, casperVipId, dailyEarning, totalEarning },
+  client
+) => {
+  const { rows } = await client.query(
+    `
+    INSERT INTO investments
+    (user_id, item_id, caspervip_id, daily_earning, total_earning)
+    VALUES ($1, $2, $3, $4, $5)
     RETURNING *;
-  `;
-  const values = [userId, itemId, dailyEarning, totalEarning];
-  const { rows } = await client.query(query, values);
+    `,
+    [userId, itemId, casperVipId, dailyEarning, totalEarning]
+  );
+
   return rows[0];
 };
 
