@@ -60,6 +60,26 @@ CREATE TABLE IF NOT EXISTS investments (
 );
 `;
 
+const alterTableInvestments = `
+  ALTER TABLE investments
+  ADD COLUMN IF NOT EXISTS caspervip_id INTEGER;
+
+  ALTER TABLE investments
+  ADD CONSTRAINT investments_caspervip_id_fkey
+  FOREIGN KEY (caspervip_id)
+  REFERENCES casper_vip(id)
+  ON DELETE CASCADE;
+
+  ALTER TABLE investments
+  ADD CONSTRAINT investments_only_one_product_check
+  CHECK (
+    (item_id IS NOT NULL AND caspervip_id IS NULL)
+    OR
+    (item_id IS NULL AND caspervip_id IS NOT NULL)
+  );
+`;
+
+
 
 const alterTableUsers = `
   ALTER TABLE users
@@ -123,12 +143,14 @@ const setupDatabase = async () => {
     console.log('SUCCESS: "transactions" table altered successfully (if needed).');
     await client.query(createDailyTaskTable);
     console.log('SUCCESS: "daily_tasks" table created successfully (or already existed).');
-    await client.query(createInvestmentTable);
-    console.log('SUCCESS: "investments" table created successfully (or already existed).');
     await client.query(createItemTable);
     console.log('SUCCESS: "items" table created successfully (or already existed).');
     await client.query(createVipTable);
     console.log('SUCCESS: "casper_vip" table created successfully (or already existed).');
+    await client.query(createInvestmentTable);
+    console.log('SUCCESS: "investments" table created successfully (or already existed).');
+    await client.query(alterTableInvestments);
+    console.log('SUCCESS: "investments" table altered successfully (if needed).');
     
     client.release();
     console.log('Tables created/verified.');
