@@ -9,29 +9,6 @@ if (!JWT_SECRET) throw new Error("JWT_SECRET is not defined in environment varia
 
 const SALT_ROUNDS = 10;
 
-/**Register Admin */
-export const registerAdmin = async (email, password) => {
-  const existingAdmin = await findAdminByEmail(email);
-  if (existingAdmin) throw new Error("Admin with this email already exists");
-
-  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-
-  const admin = await insertAdmin({
-    email,
-    password: hashedPassword,
-    isAdmin: true
-  });
-
-  return {
-    message: "Admin registered successfully",
-    admin: {
-      id: admin.id,
-      email: admin.email,
-      is_admin: admin.is_admin
-    }
-  };
-};
-
 /**Login Admin */
 export const loginAdmin = async (email, password) => {
   const admin = await findAdminByEmail(email);

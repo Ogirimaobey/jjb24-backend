@@ -1,5 +1,5 @@
 import express from "express";
-import { registerAdmin, loginAdmin, getAdminStats, getAllUsersForAdmin, getAllInvestmentsForAdmin } from "../service/adminService.js";
+import {loginAdmin, getAdminStats, getAllUsersForAdmin, getAllInvestmentsForAdmin } from "../service/adminService.js";
 import upload from '../middleware/upload.js';
 import { uploadItem, deleteItem, updateItem } from '../service/itemService.js';
 import { createVip, getAllVips, getVipById, updateVip, deleteVip } from '../service/vipService.js';
@@ -8,15 +8,6 @@ import { verifyToken, verifyAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.post("/register", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const response = await registerAdmin(email, password);
-    res.status(201).json({ success: true, ...response });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
 
 router.post("/login", async (req, res) => {
   try {
