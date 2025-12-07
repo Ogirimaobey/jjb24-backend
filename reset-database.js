@@ -8,7 +8,7 @@ const resetTables = async () => {
 
     await pool.query(`
       DELETE FROM users
-      WHERE email <> 'olaleyebabatun@gmail.com';
+      WHERE email <> 'anonymous@gmail.com';
     `);
 
     await pool.query(`
