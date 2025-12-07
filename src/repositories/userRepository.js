@@ -27,15 +27,9 @@ export const updateUserBalance = async (userId, newBalance) => {
       [newBalance, userId]
     );
 
-    if (result.rowCount === 0) {
-      console.error(" User balance update failed. No rows affected for userId:", userId);
-    } else {
-      console.log("User balance updated:", result.rows[0]);
-    }
-
     return result;
   } catch (err) {
-    console.error(" Error updating user balance:", err.message);
+    // console.error(" Error updating user balance:", err.message);
     throw err;
   }
 };
@@ -45,6 +39,27 @@ export const findUserById = async (userId) => {
   const { rows } = await pool.query(query, [userId]);
   return rows[0];
 };
+
+export const findUserEmailByUserId = async (userId) => {
+  const { rows } = await pool.query(
+    "SELECT id, email FROM users WHERE id = $1",
+    [userId]
+  );
+
+  return rows.length ? rows[0] : null;
+};
+
+
+export const updateUserEmail = async (userId, newEmail) => {
+  const result = await pool.query(
+    "UPDATE users SET email = $1 WHERE id = $2",
+    [newEmail, userId]
+  );
+
+  return result.rowCount === 1;
+};
+
+
 
 export const findUserByReferralCode = async (referralCode) => {
   const query = `SELECT * FROM users WHERE own_referral_code = $1`;
@@ -89,4 +104,3 @@ export const getRecentUsers = async (limit = 10) => {
   const { rows } = await pool.query(query, [limit]);
   return rows;
 };
-

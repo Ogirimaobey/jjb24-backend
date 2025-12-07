@@ -4,8 +4,8 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { insertUser, findUserByPhone, 
   findUserByEmail, findUserById, 
-  findUserByReferralCode, incrementReferralCount,
-  updateUserVerification, updateUserBalance
+  findUserByReferralCode, incrementReferralCount, updateUserEmail,
+  updateUserVerification, updateUserBalance, findUserEmailByUserId
  } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
@@ -60,7 +60,6 @@ export const registerUser = async (data) => {
 
 };
 
-
 // Helper function to send OTP email
 const sendOtpEmail = async (to, otp) => {
   const transporter = nodemailer.createTransport({
@@ -109,7 +108,7 @@ export const loginUser = async (data) => {
   const token = jwt.sign(
     { id: user.id, phone: user.phone_number, email: user.email, is_admin: user.is_admin },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '1d' }
   );
 
   return {
@@ -162,11 +161,31 @@ export const verifyUserOtp = async (email, otp) => {
   };
 };
 
+//Edit user email
+export const editUserEmail = async (userId, newEmail) => {
+  try {
+    const user = await findUserEmailByUserId(userId);
+    if (!user) throw new Error("User not found");
+
+    if (user.email === newEmail) {
+      throw new Error("New email is the same as the current email");
+    }
+
+    if(!newEmail.includes("@")){
+      throw new Error("Invalid email! format email must contain '@' symbol");
+    }
+    await updateUserEmail(userId, newEmail);
+    return { success: true, message: "Email updated successfully", newEmail: newEmail, oldEmail: user.email};
+  } catch (err) {
+    console.error("Error updating email:", err.message);
+    throw err;
+  }
+};
+
 
 export const getUserProfile = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
-  // console.log("User profile fetched:", user);
   return {
     id: user.id,
     full_name: user.full_name,

@@ -73,6 +73,7 @@ router.put('/updateItem/:id', verifyToken, verifyAdmin, upload.single('itemImage
   }
 });
 
+
 // ========== CASPERVIP ROUTES ==========
 
 // Admin creates a new CASPERVIP product
@@ -154,6 +155,7 @@ router.delete('/vip/:id', verifyToken, verifyAdmin, async (req, res) => {
     res.status(404).json({ success: false, message: err.message });
   }
 });
+
 
 // ========== ADMIN DASHBOARD ROUTES ==========
 

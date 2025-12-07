@@ -1,6 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { registerUser, loginUser, getUserBalance, verifyUserOtp, getUserProfile} from '../service/userService.js';
+import { registerUser, loginUser, getUserBalance, editUserEmail, verifyUserOtp, getUserProfile} from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
 import { getUserEarningsSummary } from '../service/investmentService.js';
@@ -10,7 +10,6 @@ const router = express.Router();
 
 // User registration
 router.post('/register', async (req, res) => {
-  // const { fullName, phone, email, password, referralCode } = req.body;  
   try {
     const user = await registerUser(req.body);
     res.status(201).json({ success: true, user });
@@ -49,10 +48,10 @@ router.post('/login', async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'None',
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days to match token expiration
+      maxAge: 1000 * 60 * 60 * 24 * 1, // 1 day to match token expiration (as requested by Ogirima)
     });
     
-    console.log('[Login Route] Cookie set with maxAge: 7 days');
+    console.log('[Login Route] Cookie set with maxAge: 1 day');
     
     // Also return token in response so frontend can use it in Authorization header
     res.json({ success: true, token, user });
@@ -74,7 +73,6 @@ router.post('/logout', (req, res) => {
 router.get("/balance", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id; 
-
     const balance = await getUserBalance(userId);
     res.status(200).json({success: true, balance});
   } catch (error) {
@@ -119,7 +117,6 @@ router.get('/item/:id', verifyToken, async (req, res) => {
 
 //Cookies -Authentication
 router.get('/check-auth', verifyToken, (req, res) => {
-    // If middleware passes, user is auth'd—send minimal data
     res.json({ 
         success: true, 
         user: { username: req.user.userId }  
@@ -131,7 +128,6 @@ router.get('/user_profile', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const profile = await getUserProfile(userId);
-    // console.log("User profile sent:", profile);
     res.status(200).json({ success: true, profile });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -147,6 +143,20 @@ router.get('/earnings-summary', verifyToken, async (req, res) => {
     res.status(200).json({ success: true, ...earnings });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+
+// Edit User Email
+router.put('/edit-email', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { newEmail } = req.body;
+    const result = await editUserEmail(userId, newEmail);
+    res.status(200).json(result);
+  } catch (error) {
+    console.log("error message", error.message);
+    res.status(400).json({ success: false, message: error.message });
   }
 });
 
