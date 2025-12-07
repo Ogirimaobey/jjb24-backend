@@ -58,3 +58,7 @@ app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 cron.schedule('* * * * *', async () => {
   await processDailyEarnings();
 });
+
+
+
+
