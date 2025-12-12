@@ -156,26 +156,62 @@ export const requestWithdrawal = async (userId, amount, bankName, accountNumber,
 
 // Admin approves or rejects withdrawal
 export const approveWithdrawal = async (reference, approve = true) => {
-  const transaction = await findTransactionByReference(reference);
-  if (!transaction) throw new Error("Transaction not found");
-
-  if (transaction.status !== "pending") throw new Error("Already proccessed");
-
-  const user = await findUserById(transaction.user_id);
-  if (!user) throw new Error("User not found");
-
-  const bankCode = await getBankCode(transaction.bank_name);
-
+  console.log(`[approveWithdrawal] Starting withdrawal ${approve ? 'approval' : 'rejection'} for reference: ${reference}`);
+  
   try {
+    const transaction = await findTransactionByReference(reference);
+    if (!transaction) {
+      console.error(`[approveWithdrawal] Transaction not found: ${reference}`);
+      throw new Error("Transaction not found");
+    }
+
+    console.log(`[approveWithdrawal] Transaction found:`, {
+      id: transaction.id,
+      status: transaction.status,
+      amount: transaction.amount,
+      bank_name: transaction.bank_name,
+      account_number: transaction.account_number
+    });
+
+    if (transaction.status !== "pending") {
+      console.error(`[approveWithdrawal] Transaction already processed. Status: ${transaction.status}`);
+      throw new Error("Already processed");
+    }
+
+    const user = await findUserById(transaction.user_id);
+    if (!user) {
+      console.error(`[approveWithdrawal] User not found: ${transaction.user_id}`);
+      throw new Error("User not found");
+    }
+
     if (approve) {
+      console.log(`[approveWithdrawal] Processing approval...`);
+      
+      // Get bank code with error handling
+      let bankCode;
+      try {
+        bankCode = await getBankCode(transaction.bank_name);
+        console.log(`[approveWithdrawal] Bank code retrieved: ${bankCode} for ${transaction.bank_name}`);
+      } catch (bankError) {
+        console.error(`[approveWithdrawal] Failed to get bank code:`, bankError.message);
+        throw new Error(`Failed to get bank code: ${bankError.message}`);
+      }
+
+      // Calculate net payout (amount - 9%)
+      const grossAmount = Number(transaction.amount);
+      const netAmount = Math.round(grossAmount * 0.91 * 100) / 100; // Round to 2 decimal places
+      console.log(`[approveWithdrawal] Gross amount: ₦${grossAmount}, Net payout: ₦${netAmount} (9% fee deducted)`);
+
       const payload = {
         account_bank: bankCode, 
         account_number: transaction.account_number,
-        amount: transaction.amount,
+        amount: netAmount, // Use net amount (after 9% deduction)
         currency: "NGN",
         narration: "JJB24 Wallet Withdrawal",
         reference: transaction.reference,
       };
+
+      console.log(`[approveWithdrawal] Flutterwave payload:`, payload);
 
       try {
         const response = await axios.post(`${FLW_BASE_URL}/transfers`, payload, {
@@ -184,34 +220,45 @@ export const approveWithdrawal = async (reference, approve = true) => {
           },
         });
 
-        console.log("Flutterwave response:", response.data);
+        console.log("[approveWithdrawal] Flutterwave response:", JSON.stringify(response.data, null, 2));
 
         if (response.data.status === "success") {
           await updateTransactionStatus(reference, "success");
-          console.log(`Withdrawal sent to ${transaction.account_name} (${transaction.account_number})`);
+          console.log(`[approveWithdrawal] ✅ Withdrawal approved and sent to ${transaction.account_name} (${transaction.account_number})`);
+          return {
+            message: `Withdrawal approved & sent. Net payout: ₦${netAmount.toLocaleString()}`,
+            transactionRef: reference,
+            grossAmount: grossAmount,
+            netAmount: netAmount,
+          };
         } else {
-          throw new Error("Bank transfer failed at Flutterwave");
+          console.error("[approveWithdrawal] Flutterwave returned non-success status:", response.data);
+          throw new Error(response.data.message || "Bank transfer failed at Flutterwave");
         }
       } catch (error) {
-        console.error(
-          "Flutterwave error:",
-          error.response?.data || error.message
-        );
-        throw new Error(
-          error.response?.data?.message || "Flutterwave transfer failed"
-        );
+        console.error("[approveWithdrawal] Flutterwave API error:", {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status
+        });
+        
+        const errorMessage = error.response?.data?.message || error.message || "Flutterwave transfer failed";
+        throw new Error(`Flutterwave transfer failed: ${errorMessage}`);
       }
     } else {
+      console.log(`[approveWithdrawal] Processing rejection...`);
       const refundBalance = Number(user.balance) + Number(transaction.amount);
       await updateUserBalance(user.id, refundBalance);
       await updateTransactionStatus(reference, "failed");
+      console.log(`[approveWithdrawal] ✅ Withdrawal rejected. Balance refunded to user.`);
+      
+      return {
+        message: `Withdrawal rejected`,
+        transactionRef: reference,
+      };
     }
-
-    return {
-      message: `Withdrawal ${approve ? "approved & sent" : "rejected"}`,
-      transactionRef: reference,
-    };
   } catch (error) {
+    console.error(`[approveWithdrawal] Error processing withdrawal:`, error);
     throw new Error(`Error processing withdrawal: ${error.message}`);
   }
 };

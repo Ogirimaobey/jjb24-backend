@@ -8,14 +8,14 @@ const router = express.Router();
 // Admin uploads a new item (with image)
 router.post('/upload', verifyToken, verifyAdmin, upload.single('itemImage'), async (req, res) => {
   try {
-    const { itemName, price, dailyIncome } = req.body;
+    const { itemName, price, dailyIncome, duration } = req.body;
     
     if (!req.file) {
       return res.status(400).json({ success: false, message: "Image file is required" });
     }
 
     const imageUrl = req.file.path; // Cloudinary URL
-    const result = await uploadItem({ itemName, price, dailyIncome }, imageUrl);
+    const result = await uploadItem({ itemName, price, dailyIncome, duration }, imageUrl);
     
     res.status(201).json({ success: true, ...result });
   } catch (err) {
@@ -48,10 +48,10 @@ router.get('/:id', verifyToken, async (req, res) => {
 router.put('/:id', verifyToken, verifyAdmin, upload.single('itemImage'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { itemName, price, dailyIncome } = req.body;
+    const { itemName, price, dailyIncome, duration } = req.body;
     const imageUrl = req.file ? req.file.path : null;
     
-    const result = await updateItem(id, { itemName, price, dailyIncome }, imageUrl);
+    const result = await updateItem(id, { itemName, price, dailyIncome, duration }, imageUrl);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });

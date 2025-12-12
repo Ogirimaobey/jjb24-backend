@@ -3,13 +3,16 @@ import { insertItemQuery, getAllItemsQuery, getItemByIdQuery, updateItemQuery, d
 
 // Admin uploads/creates a new item
 export const uploadItem = async (itemData, imageUrl) => {
-  const { itemName, price, dailyIncome } = itemData;
+  const { itemName, price, dailyIncome, duration } = itemData;
 
   if (!itemName || !price || !dailyIncome || !imageUrl) {
     throw new Error("All fields are required: itemName, price, dailyIncome, and image");
   }
 
-  const values = [itemName, price, dailyIncome, imageUrl];
+  // Default duration to 30 days if not provided
+  const itemDuration = duration ? parseInt(duration) : 30;
+
+  const values = [itemName, price, dailyIncome, imageUrl, itemDuration];
   const { rows } = await pool.query(insertItemQuery, values);
 
   return {
@@ -45,7 +48,7 @@ export const getItemById = async (itemId) => {
 
 // Admin updates an item
 export const updateItem = async (itemId, itemData, imageUrl) => {
-  const { itemName, price, dailyIncome } = itemData;
+  const { itemName, price, dailyIncome, duration } = itemData;
 
   // Check if item exists
   const existingItem = await pool.query(getItemByIdQuery, [itemId]);
@@ -55,8 +58,10 @@ export const updateItem = async (itemId, itemData, imageUrl) => {
 
   // Use existing image if no new image provided
   const finalImageUrl = imageUrl || existingItem.rows[0].itemimage;
+  // Use existing duration if not provided, default to 30
+  const itemDuration = duration ? parseInt(duration) : (existingItem.rows[0].duration || 30);
 
-  const values = [itemId, itemName, price, dailyIncome, finalImageUrl];
+  const values = [itemId, itemName, price, dailyIncome, finalImageUrl, itemDuration];
   const { rows } = await pool.query(updateItemQuery, values);
 
   return {
