@@ -1,4 +1,5 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { registerUser, loginUser, getUserBalance, editUserEmail, verifyUserOtp, getUserProfile} from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
@@ -22,12 +23,12 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { token, user } = await loginUser(req.body);
-    res.cookie('authToken', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'None',
+  res.cookie('authToken', token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'None',
     maxAge: 1000 * 60 * 60 * 24 * 7, 
-    });
+});
     res.json({ success: true, token, user });
   } 
   catch (error) {
