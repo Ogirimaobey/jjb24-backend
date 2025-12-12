@@ -12,19 +12,17 @@ const createUserTable = `
     is_admin BOOLEAN DEFAULT false,
     balance NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMPTZ DEFAULT NOW()
-
   );
 `;
 
 const createTableAdmin = `
   CREATE TABLE IF NOT EXISTS admin (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(100) UNIQUE NOT NULL,
-  password TEXT NOT NULL,
-  is_admin BOOLEAN DEFAULT true
-);
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    is_admin BOOLEAN DEFAULT true
+  );
 `;
-
 
 const createTransactionsTable = `
   CREATE TABLE IF NOT EXISTS transactions (
@@ -44,20 +42,18 @@ const createDailyTaskTable = `
     task_date DATE NOT NULL DEFAULT CURRENT_DATE,
     tasks_completed INTEGER NOT NULL DEFAULT 0,
     UNIQUE (user_id, task_date)
-   
   );
 `;
 
-
 const createInvestmentTable = `
-CREATE TABLE IF NOT EXISTS investments (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-  item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-  daily_earning NUMERIC DEFAULT 0,
-  total_earning NUMERIC DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+  CREATE TABLE IF NOT EXISTS investments (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+    daily_earning NUMERIC DEFAULT 0,
+    total_earning NUMERIC DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
 `;
 
 const alterTableInvestments = `
@@ -65,12 +61,14 @@ const alterTableInvestments = `
   ADD COLUMN IF NOT EXISTS caspervip_id INTEGER;
 
   ALTER TABLE investments
+  DROP CONSTRAINT IF EXISTS investments_caspervip_id_fkey, -- Drop first to avoid duplicates
   ADD CONSTRAINT investments_caspervip_id_fkey
   FOREIGN KEY (caspervip_id)
   REFERENCES casper_vip(id)
   ON DELETE CASCADE;
 
   ALTER TABLE investments
+  DROP CONSTRAINT IF EXISTS investments_only_one_product_check, -- Drop first
   ADD CONSTRAINT investments_only_one_product_check
   CHECK (
     (item_id IS NOT NULL AND caspervip_id IS NULL)
@@ -79,14 +77,14 @@ const alterTableInvestments = `
   );
 `;
 
-
-
 const alterTableUsers = `
   ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE,
   ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS balance NUMERIC(10, 2) DEFAULT 0.00,
   ADD COLUMN IF NOT EXISTS referral_count INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS referral_code_used VARCHAR(50), -- Ensure this exists for tracking
+  ADD COLUMN IF NOT EXISTS own_referral_code VARCHAR(50) UNIQUE, -- Ensure this exists for sharing
   ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS otp_code VARCHAR(10),  
   ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP,
@@ -100,6 +98,7 @@ const alterTableTransactions = `
     ADD COLUMN IF NOT EXISTS account_number VARCHAR(20),
     ADD COLUMN IF NOT EXISTS account_name VARCHAR(100);
 `;
+
 const createItemTable = `
   CREATE TABLE IF NOT EXISTS items (
     id SERIAL PRIMARY KEY,
@@ -108,7 +107,16 @@ const createItemTable = `
     dailyIncome NUMERIC(10, 2) NOT NULL,
     itemImage VARCHAR(255) NOT NULL
   );
-`
+`;
+
+// --- [NEW] FIX FOR DURATION ISSUE ---
+// This forces the 'duration' column into the items table
+const alterTableItems = `
+  ALTER TABLE items
+  ADD COLUMN IF NOT EXISTS duration INTEGER DEFAULT 30;
+`;
+// ------------------------------------
+
 const createVipTable = `
   CREATE TABLE IF NOT EXISTS casper_vip (
     id SERIAL PRIMARY KEY,   
@@ -123,8 +131,6 @@ const createVipTable = `
   );
 `;
 
-
-
 const setupDatabase = async () => {
   try {
     console.log('Connecting to the database to set up table...');
@@ -132,29 +138,42 @@ const setupDatabase = async () => {
     const client = await pool.connect();
 
     await client.query(createUserTable);
-    console.log('SUCCESS: "users" table created successfully (or already existed).');
+    console.log('SUCCESS: "users" table created/verified.');
+    
     await client.query(createTableAdmin);
-    console.log('SUCCESS: "admin" table created successfully (or already existed).');
+    console.log('SUCCESS: "admin" table created/verified.');
+    
     await client.query(alterTableUsers);
-    console.log('SUCCESS: "users" table altered successfully (if needed).');
+    console.log('SUCCESS: "users" table altered (Schema Updated).');
+    
     await client.query(createTransactionsTable);
-    console.log('SUCCESS: "transactions" table created successfully (or already existed).');
+    console.log('SUCCESS: "transactions" table created/verified.');
+    
     await client.query(alterTableTransactions);
-    console.log('SUCCESS: "transactions" table altered successfully (if needed).');
+    console.log('SUCCESS: "transactions" table altered (Schema Updated).');
+    
     await client.query(createDailyTaskTable);
-    console.log('SUCCESS: "daily_tasks" table created successfully (or already existed).');
+    console.log('SUCCESS: "daily_tasks" table created/verified.');
+    
     await client.query(createItemTable);
-    console.log('SUCCESS: "items" table created successfully (or already existed).');
+    console.log('SUCCESS: "items" table created/verified.');
+    
+    // --- RUN THE NEW FIX HERE ---
+    await client.query(alterTableItems);
+    console.log('SUCCESS: "items" table updated with DURATION column.');
+    // ----------------------------
+
     await client.query(createVipTable);
-    console.log('SUCCESS: "casper_vip" table created successfully (or already existed).');
+    console.log('SUCCESS: "casper_vip" table created/verified.');
+    
     await client.query(createInvestmentTable);
-    console.log('SUCCESS: "investments" table created successfully (or already existed).');
+    console.log('SUCCESS: "investments" table created/verified.');
+    
     await client.query(alterTableInvestments);
-    console.log('SUCCESS: "investments" table altered successfully (if needed).');
+    console.log('SUCCESS: "investments" table altered (Schema Updated).');
     
     client.release();
-    console.log('Tables created/verified.');
-
+    console.log('ALL TABLES SETUP SUCCESSFULLY.');
 
   } catch (error) {
     console.error('Error setting up the database:', error);
