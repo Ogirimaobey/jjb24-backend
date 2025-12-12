@@ -90,7 +90,7 @@ console.log("[initializePayment] Flutterwave response status:", response.status)
       throw new Error(error.response.data.message);
     } else {
       throw new Error(`Payment initialization failed: ${error.message}`);
-    }
+  }
   }
 };
 
@@ -101,7 +101,7 @@ export const verifyPayment = async (event) => {
   const transaction = await findTransactionByReference(tx_ref);
   if (!transaction) throw new Error("Transaction not found");
 
-  if (
+   if (
     status === "successful" ||
     event.event === "transfer.completed" ||
     event.event === "payment.completed" ||
@@ -178,7 +178,7 @@ export const approveWithdrawal = async (reference, approve = true) => {
       throw new Error("Already processed");
     }
 
-    const user = await findUserById(transaction.user_id);
+  const user = await findUserById(transaction.user_id);
     if (!user) {
       console.error(`[approveWithdrawal] User not found: ${transaction.user_id}`);
       throw new Error("User not found");
@@ -251,11 +251,11 @@ export const approveWithdrawal = async (reference, approve = true) => {
       await updateUserBalance(user.id, refundBalance);
       await updateTransactionStatus(reference, "failed");
       console.log(`[approveWithdrawal] ✅ Withdrawal rejected. Balance refunded to user.`);
-      
-      return {
+
+    return {
         message: `Withdrawal rejected`,
-        transactionRef: reference,
-      };
+      transactionRef: reference,
+    };
     }
   } catch (error) {
     console.error(`[approveWithdrawal] Error processing withdrawal:`, error);
