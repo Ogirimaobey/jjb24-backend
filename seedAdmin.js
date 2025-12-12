@@ -6,7 +6,7 @@ dotenv.config();
 
 const SALT_ROUNDS = 10;
 
-const permanentAdmin = async () => {
+export const permanentAdmin = async () => {
   try {
     const email = process.env.ADMIN_EMAIL;
     const plainPassword = process.env.ADMIN_PASSWORD;
@@ -18,7 +18,7 @@ const permanentAdmin = async () => {
     const existingAdmin = await findAdminByEmail(email);
     if (existingAdmin) {
       console.log("Permanent admin already exists. Skipping creation.");
-      process.exit(0);
+      return;
     }
 
     const hashedPassword = await bcrypt.hash(plainPassword, SALT_ROUNDS);
@@ -30,11 +30,8 @@ const permanentAdmin = async () => {
     });
 
     console.log("Permanent admin created successfully.");
-    process.exit(0);
+
   } catch (err) {
     console.error("Error creating permanent admin:", err.message);
-    process.exit(1);
   }
 };
-
-permanentAdmin();

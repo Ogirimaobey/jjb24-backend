@@ -1,4 +1,5 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { registerUser, loginUser, getUserBalance, editUserEmail, verifyUserOtp, getUserProfile} from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
@@ -28,7 +29,7 @@ router.post('/login', async (req, res) => {
       sameSite: 'None',
     maxAge: 1000 * 60 * 60 * 24 * 7, 
     });
-    res.json({ success: true, user });
+    res.json({ success: true, token, user });
   } 
   catch (error) {
     res.status(401).json({ success: false, message: error.message });
