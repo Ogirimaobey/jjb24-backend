@@ -9,13 +9,11 @@ import investmentRoute from './src/routes/investmentRoute.js';
 import cors from "cors";
 import cron from 'node-cron';
 import { processDailyEarnings } from './src/service/investmentService.js';
-import { permanentAdmin } from "./seedAdmin.js";
+import { permanentAdmin } from "./seedAdmin.js";  
 
-// --- CRITICAL FIX: IMPORT THE DATABASE SETUP ---
-// This forces the tables to update and the VIPs to be created.
-// Make sure the file name matches what you saved (e.g., createTable.js or setupDatabase.js)
+// --- THIS IS THE MISSING LINK ---
 import './createTable.js'; 
-// -----------------------------------------------
+// --------------------------------
 
 dotenv.config();
 
@@ -35,7 +33,6 @@ cron.schedule('0 0 * * *', async () => {
 });
 
 const startServer = async () => {
-  // Ensure Admin exists
   await permanentAdmin();   
 
   const PORT = process.env.PORT || 5000;
