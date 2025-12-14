@@ -174,9 +174,9 @@ const setupDatabase = async () => {
 
   } catch (error) {
     console.error('Error setting up the database:', error);
-  } finally {
-    await pool.end();
   }
+  // Note: We do NOT call pool.end() here because this script runs on server startup
+  // and the pool needs to remain open for the application to use
 };
 
 setupDatabase();
