@@ -1,5 +1,6 @@
 import pool from './src/config/database.js';
 
+// ... (All your SQL strings remain exactly the same) ...
 const createUserTable = `
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -128,8 +129,6 @@ const createVipTable = `
   );
 `;
 
-// --- [NEW] SEED VIP DATA ---
-// This inserts the products automatically so the investment buttons work immediately.
 const seedVipProducts = `
   INSERT INTO casper_vip (id, name, price, daily_earnings, duration_days, total_returns, image)
   VALUES 
@@ -139,7 +138,6 @@ const seedVipProducts = `
   (104, 'CASPER4', 3000000, 120000, 30, 3600000, 'https://placehold.co/300x200/1a1a1a/ffffff?text=CASPER4')
   ON CONFLICT (id) DO NOTHING;
 `;
-// ---------------------------
 
 const setupDatabase = async () => {
   try {
