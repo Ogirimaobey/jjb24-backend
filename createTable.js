@@ -173,7 +173,8 @@ const setupDatabase = async () => {
   } catch (error) {
     console.error('Error setting up the database:', error);
   }
-  // ❌ DELETED THE 'finally { pool.end() }' BLOCK HERE
+  // Note: We do NOT call pool.end() here because this script runs on server startup
+  // and the pool needs to remain open for the application to use
 };
 
 setupDatabase();
