@@ -217,6 +217,7 @@ export const approveWithdrawal = async (reference, approve = true) => {
         const response = await axios.post(`${FLW_BASE_URL}/transfers`, payload, {
           headers: {
             Authorization: `Bearer ${FLW_SECRET_KEY}`,
+            "Content-Type": "application/json",
           },
         });
 
@@ -233,17 +234,41 @@ export const approveWithdrawal = async (reference, approve = true) => {
           };
         } else {
           console.error("[approveWithdrawal] Flutterwave returned non-success status:", response.data);
-          throw new Error(response.data.message || "Bank transfer failed at Flutterwave");
+          const errorMsg = response.data.message || "Bank transfer failed at Flutterwave";
+          throw new Error(errorMsg);
         }
       } catch (error) {
         console.error("[approveWithdrawal] Flutterwave API error:", {
           message: error.message,
           response: error.response?.data,
-          status: error.response?.status
+          status: error.response?.status,
+          statusText: error.response?.statusText
         });
         
         const errorMessage = error.response?.data?.message || error.message || "Flutterwave transfer failed";
-        throw new Error(`Flutterwave transfer failed: ${errorMessage}`);
+        
+        // Provide specific guidance for common Flutterwave errors
+        let detailedError = errorMessage;
+        if (errorMessage.toLowerCase().includes("cannot be processed") || 
+            errorMessage.toLowerCase().includes("contact your account administrator")) {
+          console.error("[approveWithdrawal] ⚠️ FLUTTERWAVE ACCOUNT CONFIGURATION ISSUE DETECTED");
+          console.error("[approveWithdrawal] This error typically means:");
+          console.error("[approveWithdrawal] 1. IP Whitelisting: Server IP not whitelisted in Flutterwave dashboard");
+          console.error("[approveWithdrawal] 2. Account Verification: KYC/Compliance not fully approved");
+          console.error("[approveWithdrawal] 3. Transfer Permissions: Bank transfers not enabled for account");
+          console.error("[approveWithdrawal] 4. Insufficient Balance: Flutterwave account balance too low");
+          console.error("[approveWithdrawal] Transfer Details:", {
+            amount: netAmount,
+            bank: transaction.bank_name,
+            bankCode: bankCode,
+            accountNumber: transaction.account_number,
+            reference: transaction.reference
+          });
+          
+          detailedError = `${errorMessage}. Please check Flutterwave dashboard: IP whitelist, account verification (KYC), transfer permissions, and account balance. Contact Flutterwave support (hi@flutterwavego.com) if issue persists.`;
+        }
+        
+        throw new Error(detailedError);
       }
     } else {
       console.log(`[approveWithdrawal] Processing rejection...`);
