@@ -5,7 +5,8 @@ import nodemailer from "nodemailer";
 import { insertUser, findUserByPhone, 
   findUserByEmail, findUserById, 
   findUserByReferralCode, incrementReferralCount, updateUserEmail,
-  updateUserVerification, updateUserBalance, findUserEmailByUserId
+  updateUserVerification, updateUserBalance, findUserEmailByUserId,
+  getReferredUsers, getTotalReferralCommission
  } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
@@ -192,5 +193,41 @@ export const getUserProfile = async (userId) => {
     phone_number: user.phone_number,
     email: user.email,
     referral_code: user.own_referral_code
+  };
+};
+
+// Get referral/team data for a user
+export const getUserReferralData = async (userId) => {
+  const user = await findUserById(userId);
+  if (!user) throw new Error("User not found");
+
+  const referralCode = user.own_referral_code;
+  if (!referralCode) {
+    return {
+      total_commission: 0,
+      team_count: 0,
+      team_list: []
+    };
+  }
+
+  // Get all referred users
+  const referredUsers = await getReferredUsers(referralCode);
+  
+  // Calculate total commission
+  const totalCommission = await getTotalReferralCommission(referralCode);
+
+  // Format team list
+  const teamList = referredUsers.map(u => ({
+    name: u.full_name,
+    phone: u.phone_number,
+    email: u.email || 'N/A',
+    joined_date: u.created_at,
+    balance: parseFloat(u.balance || 0)
+  }));
+
+  return {
+    total_commission: Math.round(totalCommission * 100) / 100, // Round to 2 decimal places
+    team_count: referredUsers.length,
+    team_list: teamList
   };
 };

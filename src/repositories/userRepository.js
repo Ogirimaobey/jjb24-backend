@@ -104,3 +104,50 @@ export const getRecentUsers = async (limit = 10) => {
   const { rows } = await pool.query(query, [limit]);
   return rows;
 };
+
+// Get all users referred by a specific user (by their referral code)
+export const getReferredUsers = async (referralCode) => {
+  const query = `
+    SELECT 
+      id,
+      full_name,
+      phone_number,
+      email,
+      created_at,
+      balance
+    FROM users 
+    WHERE referral_code_used = $1
+    ORDER BY created_at DESC
+  `;
+  const { rows } = await pool.query(query, [referralCode]);
+  return rows;
+};
+
+// Get total commission earned from referrals (based on referred users' investments)
+// This calculates commission as a percentage of referred users' total investment earnings
+export const getTotalReferralCommission = async (referralCode) => {
+  // Get all referred users
+  const referredUsers = await getReferredUsers(referralCode);
+  
+  if (referredUsers.length === 0) {
+    return 0;
+  }
+
+  // Calculate commission from each referred user's total earnings
+  // Commission rate: 5% of their daily earnings (as per the frontend display)
+  const userIds = referredUsers.map(u => u.id);
+  
+  const query = `
+    SELECT COALESCE(SUM(total_earning), 0) as total_commission
+    FROM investments
+    WHERE user_id = ANY($1::int[])
+  `;
+  
+  const { rows } = await pool.query(query, [userIds]);
+  const totalEarnings = parseFloat(rows[0].total_commission || 0);
+  
+  // Calculate 5% commission on total earnings
+  const commission = totalEarnings * 0.05;
+  
+  return commission;
+};

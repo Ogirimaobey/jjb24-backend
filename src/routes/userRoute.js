@@ -1,9 +1,9 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { registerUser, loginUser, getUserBalance, editUserEmail, verifyUserOtp, getUserProfile} from '../service/userService.js';
+import { registerUser, loginUser, getUserBalance, editUserEmail, verifyUserOtp, getUserProfile, getUserReferralData} from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
-import { getUserEarningsSummary } from '../service/investmentService.js';
+import { getUserEarningsSummary, getRewardHistory } from '../service/investmentService.js';
 
 
 const router = express.Router();
@@ -130,6 +130,42 @@ router.put('/edit-email', verifyToken, async (req, res) => {
     res.status(200).json(result);
   } catch (error) {
     console.log("error message", error.message);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Get user referral/team data
+router.get('/referrals', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const referralData = await getUserReferralData(userId);
+    res.status(200).json({ success: true, ...referralData });
+  } catch (error) {
+    console.error('Error fetching referral data:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Alternative endpoint name for team
+router.get('/team', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const referralData = await getUserReferralData(userId);
+    res.status(200).json({ success: true, ...referralData });
+  } catch (error) {
+    console.error('Error fetching team data:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// Get unified reward history (investment ROI + referral bonuses)
+router.get('/reward-history', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const rewardHistory = await getRewardHistory(userId);
+    res.status(200).json({ success: true, ...rewardHistory });
+  } catch (error) {
+    console.error('Error fetching reward history:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
