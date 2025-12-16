@@ -110,3 +110,23 @@ export const getTotalAmountInvested = async () => {
   const { rows } = await pool.query(query);
   return parseFloat(rows[0].total) || 0;
 };
+
+// Get investment earnings history for reward history
+export const getInvestmentEarningsHistory = async (userId) => {
+  const query = `
+    SELECT 
+      i.id,
+      i.created_at as date,
+      i.daily_earning,
+      i.total_earning,
+      COALESCE(it.itemname, cv.name) as source_name,
+      'investment_roi' as reward_type
+    FROM investments i
+    LEFT JOIN items it ON i.item_id = it.id
+    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
+    WHERE i.user_id = $1
+    ORDER BY i.created_at DESC
+  `;
+  const { rows } = await pool.query(query, [userId]);
+  return rows;
+};

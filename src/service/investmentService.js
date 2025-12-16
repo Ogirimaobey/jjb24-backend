@@ -1,6 +1,6 @@
 import pool from '../config/database.js';
-import { insertInvestment, getAllInvestments, updateInvestmentEarnings, getAllInvestmentsByUserId} from '../repositories/investmentRepository.js';
-import { findUserById, updateUserBalance } from '../repositories/userRepository.js';
+import { insertInvestment, getAllInvestments, updateInvestmentEarnings, getAllInvestmentsByUserId, getInvestmentEarningsHistory} from '../repositories/investmentRepository.js';
+import { findUserById, updateUserBalance, getReferredUsers } from '../repositories/userRepository.js';
 import { getItemByIdQuery } from '../repositories/itemRepository.js';
 import { getVipByIdQuery } from '../repositories/vipRepository.js';
 
@@ -198,6 +198,88 @@ export const getUserEarningsSummary = async (userId) => {
     };
   } catch (error) {
     throw new Error(`Failed to fetch earnings summary: ${error.message}`);
+  }
+};
+
+// Get unified reward history combining investment ROI and referral bonuses
+export const getRewardHistory = async (userId) => {
+  try {
+    const user = await findUserById(userId);
+    if (!user) throw new Error('User not found');
+
+    // Get investment earnings history
+    const investmentEarnings = await getInvestmentEarningsHistory(userId);
+    
+    // Format investment earnings as reward entries
+    const investmentRewards = investmentEarnings.map(inv => ({
+      id: `inv_${inv.id}`,
+      date: inv.date,
+      amount: parseFloat(inv.total_earning || 0),
+      source: inv.source_name || 'Investment',
+      type: 'investment_roi',
+      description: `Daily ROI from ${inv.source_name || 'Investment'}`
+    }));
+
+    // Get referral bonuses (from transactions table if type='referral' exists, or calculate)
+    // For now, we'll calculate referral commission from referred users' investments
+    const referralCode = user.own_referral_code;
+    let referralRewards = [];
+    
+    if (referralCode) {
+      const referredUsers = await getReferredUsers(referralCode);
+      
+      // Calculate referral commission entries
+      // This is a simplified version - in production, you might want to track individual referral bonuses
+      if (referredUsers.length > 0) {
+        const userIds = referredUsers.map(u => u.id);
+        const query = `
+          SELECT 
+            i.id,
+            i.created_at as date,
+            i.total_earning,
+            COALESCE(it.itemname, cv.name) as source_name,
+            u.full_name as referred_user_name
+          FROM investments i
+          LEFT JOIN items it ON i.item_id = it.id
+          LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
+          INNER JOIN users u ON i.user_id = u.id
+          WHERE i.user_id = ANY($1::int[])
+          ORDER BY i.created_at DESC
+        `;
+        const { rows } = await pool.query(query, [userIds]);
+        
+        referralRewards = rows.map(row => ({
+          id: `ref_${row.id}`,
+          date: row.date,
+          amount: parseFloat(row.total_earning || 0) * 0.05, // 5% commission
+          source: `Referral: ${row.referred_user_name}`,
+          type: 'referral_bonus',
+          description: `5% commission from ${row.referred_user_name}'s investment`
+        }));
+      }
+    }
+
+    // Combine and sort by date (newest first)
+    const allRewards = [...investmentRewards, ...referralRewards].sort((a, b) => {
+      return new Date(b.date) - new Date(a.date);
+    });
+
+    // Calculate totals
+    const totalInvestmentROI = investmentRewards.reduce((sum, r) => sum + r.amount, 0);
+    const totalReferralBonus = referralRewards.reduce((sum, r) => sum + r.amount, 0);
+    const totalRewards = totalInvestmentROI + totalReferralBonus;
+
+    return {
+      rewards: allRewards,
+      summary: {
+        total_investment_roi: Math.round(totalInvestmentROI * 100) / 100,
+        total_referral_bonus: Math.round(totalReferralBonus * 100) / 100,
+        total_rewards: Math.round(totalRewards * 100) / 100,
+        total_count: allRewards.length
+      }
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch reward history: ${error.message}`);
   }
 };
 
