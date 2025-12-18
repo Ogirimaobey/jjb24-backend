@@ -138,10 +138,12 @@ router.put('/edit-email', verifyToken, async (req, res) => {
 router.get('/referrals', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log(`[GET /api/users/referrals] User ID: ${userId}`);
     const referralData = await getUserReferralData(userId);
+    console.log(`[GET /api/users/referrals] Response:`, JSON.stringify(referralData, null, 2));
     res.status(200).json({ success: true, ...referralData });
   } catch (error) {
-    console.error('Error fetching referral data:', error);
+    console.error('[GET /api/users/referrals] Error fetching referral data:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
@@ -162,10 +164,16 @@ router.get('/team', verifyToken, async (req, res) => {
 router.get('/reward-history', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log(`[GET /api/users/reward-history] User ID: ${userId}`);
     const rewardHistory = await getRewardHistory(userId);
+    console.log(`[GET /api/users/reward-history] Response summary:`, {
+      total_count: rewardHistory.summary?.total_count,
+      total_rewards: rewardHistory.summary?.total_rewards,
+      rewards_length: rewardHistory.rewards?.length
+    });
     res.status(200).json({ success: true, ...rewardHistory });
   } catch (error) {
-    console.error('Error fetching reward history:', error);
+    console.error('[GET /api/users/reward-history] Error fetching reward history:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });

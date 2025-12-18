@@ -249,59 +249,103 @@ export const getUserEarningsSummary = async (userId) => {
 // Get unified reward history combining investment ROI and referral bonuses
 export const getRewardHistory = async (userId) => {
   try {
+    console.log(`[getRewardHistory] Fetching reward history for user ${userId}`);
     const user = await findUserById(userId);
     if (!user) throw new Error('User not found');
 
-    // Get investment earnings history
-    const investmentEarnings = await getInvestmentEarningsHistory(userId);
+    // Get investment ROI from transactions table (type = 'investment_roi')
+    const roiQuery = `
+      SELECT 
+        t.id,
+        t.amount,
+        t.created_at as date,
+        t.reference
+      FROM transactions t
+      WHERE t.user_id = $1 AND t.type = 'investment_roi' AND t.status = 'success'
+      ORDER BY t.created_at DESC
+    `;
+    const roiResult = await pool.query(roiQuery, [userId]);
+    console.log(`[getRewardHistory] Found ${roiResult.rows.length} ROI transactions`);
     
-    // Format investment earnings as reward entries
-    const investmentRewards = investmentEarnings.map(inv => ({
-      id: `inv_${inv.id}`,
-      date: inv.date,
-      amount: parseFloat(inv.total_earning || 0),
-      source: inv.source_name || 'Investment',
-      type: 'investment_roi',
-      description: `Daily ROI from ${inv.source_name || 'Investment'}`
-    }));
+    // Get investment details for source names
+    const investmentIds = roiResult.rows.map(row => {
+      const match = row.reference.match(/ROI-(\d+)-/);
+      return match ? parseInt(match[1]) : null;
+    }).filter(id => id !== null);
+    
+    let sourceMap = {};
+    if (investmentIds.length > 0) {
+      const sourceQuery = `
+        SELECT 
+          i.id,
+          COALESCE(it.itemname, cv.name) as source_name
+        FROM investments i
+        LEFT JOIN items it ON i.item_id = it.id
+        LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
+        WHERE i.id = ANY($1::int[])
+      `;
+      const sourceResult = await pool.query(sourceQuery, [investmentIds]);
+      sourceResult.rows.forEach(row => {
+        sourceMap[row.id] = row.source_name || 'Investment';
+      });
+    }
+    
+    const investmentRewards = roiResult.rows.map(row => {
+      const investmentId = row.reference.match(/ROI-(\d+)-/)?.[1];
+      const sourceName = investmentId ? sourceMap[parseInt(investmentId)] : 'Investment';
+      return {
+        id: `roi_${row.id}`,
+        date: row.date,
+        amount: parseFloat(row.amount || 0),
+        source: sourceName,
+        type: 'investment_roi',
+        description: `Daily ROI from ${sourceName}`
+      };
+    });
 
-    // Get referral bonuses (from transactions table if type='referral' exists, or calculate)
-    // For now, we'll calculate referral commission from referred users' investments
-    const referralCode = user.own_referral_code;
-    let referralRewards = [];
+    // Get referral bonuses from transactions table (type = 'referral_bonus')
+    const referralQuery = `
+      SELECT 
+        t.id,
+        t.amount,
+        t.created_at as date,
+        t.reference
+      FROM transactions t
+      WHERE t.user_id = $1 AND t.type = 'referral_bonus' AND t.status = 'success'
+      ORDER BY t.created_at DESC
+    `;
+    const referralResult = await pool.query(referralQuery, [userId]);
+    console.log(`[getRewardHistory] Found ${referralResult.rows.length} referral bonus transactions`);
     
-    if (referralCode) {
-      const referredUsers = await getReferredUsers(referralCode);
+    // Get referred user names from reference pattern REF-{userId}-{investmentId}-{timestamp}
+    const referralRewards = referralResult.rows.map(row => {
+      const match = row.reference.match(/REF-(\d+)-/);
+      const referredUserId = match ? parseInt(match[1]) : null;
+      return {
+        id: `ref_${row.id}`,
+        date: row.date,
+        amount: parseFloat(row.amount || 0),
+        source: `Referral Bonus`,
+        type: 'referral_bonus',
+        description: `Referral commission`,
+        referred_user_id: referredUserId
+      };
+    });
+    
+    // Fetch referred user names if needed
+    const referredUserIds = referralRewards.map(r => r.referred_user_id).filter(id => id !== null);
+    if (referredUserIds.length > 0) {
+      const userQuery = `SELECT id, full_name FROM users WHERE id = ANY($1::int[])`;
+      const userResult = await pool.query(userQuery, [referredUserIds]);
+      const userMap = {};
+      userResult.rows.forEach(u => { userMap[u.id] = u.full_name; });
       
-      // Calculate referral commission entries
-      // This is a simplified version - in production, you might want to track individual referral bonuses
-      if (referredUsers.length > 0) {
-        const userIds = referredUsers.map(u => u.id);
-        const query = `
-          SELECT 
-            i.id,
-            i.created_at as date,
-            i.total_earning,
-            COALESCE(it.itemname, cv.name) as source_name,
-            u.full_name as referred_user_name
-          FROM investments i
-          LEFT JOIN items it ON i.item_id = it.id
-          LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
-          INNER JOIN users u ON i.user_id = u.id
-          WHERE i.user_id = ANY($1::int[])
-          ORDER BY i.created_at DESC
-        `;
-        const { rows } = await pool.query(query, [userIds]);
-        
-        referralRewards = rows.map(row => ({
-          id: `ref_${row.id}`,
-          date: row.date,
-          amount: parseFloat(row.total_earning || 0) * 0.05, // 5% commission
-          source: `Referral: ${row.referred_user_name}`,
-          type: 'referral_bonus',
-          description: `5% commission from ${row.referred_user_name}'s investment`
-        }));
-      }
+      referralRewards.forEach(r => {
+        if (r.referred_user_id && userMap[r.referred_user_id]) {
+          r.source = `Referral: ${userMap[r.referred_user_id]}`;
+          r.description = `Referral commission from ${userMap[r.referred_user_id]}`;
+        }
+      });
     }
 
     // Combine and sort by date (newest first)
@@ -314,6 +358,8 @@ export const getRewardHistory = async (userId) => {
     const totalReferralBonus = referralRewards.reduce((sum, r) => sum + r.amount, 0);
     const totalRewards = totalInvestmentROI + totalReferralBonus;
 
+    console.log(`[getRewardHistory] Total rewards: ${allRewards.length}, ROI: ₦${totalInvestmentROI}, Referral: ₦${totalReferralBonus}`);
+
     return {
       rewards: allRewards,
       summary: {
@@ -324,6 +370,7 @@ export const getRewardHistory = async (userId) => {
       }
     };
   } catch (error) {
+    console.error(`[getRewardHistory] Error:`, error);
     throw new Error(`Failed to fetch reward history: ${error.message}`);
   }
 };
