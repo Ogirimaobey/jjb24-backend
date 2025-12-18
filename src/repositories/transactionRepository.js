@@ -1,9 +1,45 @@
 import pool from '../config/database.js';
 
-export const createTransaction = async (userId, amount, reference) => {
+export const createTransaction = async (userId, amount, reference, type = 'deposit') => {
   const result = await pool.query(
-    `INSERT INTO transactions (user_id, amount, reference, status)
-     VALUES ($1, $2, $3, 'pending') RETURNING *`,
+    `INSERT INTO transactions (user_id, amount, reference, status, type)
+     VALUES ($1, $2, $3, 'success', $4) RETURNING *`,
+    [userId, amount, reference, type]
+  );
+  return result.rows[0];
+};
+
+// Create transaction for investment ROI (daily earnings)
+export const createInvestmentRoiTransaction = async (userId, amount, investmentId, client = null) => {
+  const reference = `ROI-${investmentId}-${Date.now()}`;
+  const query = client ? client.query.bind(client) : pool.query.bind(pool);
+  const result = await query(
+    `INSERT INTO transactions (user_id, amount, reference, status, type)
+     VALUES ($1, $2, $3, 'success', 'investment_roi') RETURNING *`,
+    [userId, amount, reference]
+  );
+  return result.rows[0];
+};
+
+// Create transaction for referral bonus
+export const createReferralBonusTransaction = async (userId, amount, referredUserId, investmentId, client = null) => {
+  const reference = `REF-${referredUserId}-${investmentId}-${Date.now()}`;
+  const query = client ? client.query.bind(client) : pool.query.bind(pool);
+  const result = await query(
+    `INSERT INTO transactions (user_id, amount, reference, status, type)
+     VALUES ($1, $2, $3, 'success', 'referral_bonus') RETURNING *`,
+    [userId, amount, reference]
+  );
+  return result.rows[0];
+};
+
+// Create transaction for investment purchase
+export const createInvestmentTransaction = async (userId, amount, investmentId, client = null) => {
+  const reference = `INV-${investmentId}-${Date.now()}`;
+  const query = client ? client.query.bind(client) : pool.query.bind(pool);
+  const result = await query(
+    `INSERT INTO transactions (user_id, amount, reference, status, type)
+     VALUES ($1, $2, $3, 'success', 'investment') RETURNING *`,
     [userId, amount, reference]
   );
   return result.rows[0];
@@ -102,7 +138,9 @@ export const getAllTransactionsByUserId = async (userId) => {
       status,
       reference,
       type,
-      created_at
+      created_at,
+      bank_name,
+      account_name
     FROM transactions 
     WHERE user_id = $1 
     ORDER BY created_at DESC

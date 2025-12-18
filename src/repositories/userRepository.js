@@ -20,9 +20,13 @@ export const findUserByEmail = async (email) => {
 
 
 // Update user balance
-export const updateUserBalance = async (userId, newBalance) => {
+export const updateUserBalance = async (userId, newBalance, client = null) => {
   try {
-    const result = await pool.query(
+    const query = client 
+      ? client.query.bind(client)
+      : pool.query.bind(pool);
+    
+    const result = await query(
       "UPDATE users SET balance = $1 WHERE id = $2 RETURNING *",
       [newBalance, userId]
     );
@@ -30,8 +34,8 @@ export const updateUserBalance = async (userId, newBalance) => {
     return result;
   } catch (err) {
     // console.error(" Error updating user balance:", err.message);
-    throw err;
-  }
+    throw err;
+  }
 };
 
 export const findUserById = async (userId) => {

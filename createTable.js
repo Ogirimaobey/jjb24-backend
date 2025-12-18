@@ -94,10 +94,18 @@ const alterTableUsers = `
 
 const alterTableTransactions = `
   ALTER TABLE transactions
-    ADD COLUMN IF NOT EXISTS type VARCHAR(20) CHECK (type IN ('deposit', 'withdrawal')) DEFAULT 'deposit',
+    ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'deposit',
     ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100),
     ADD COLUMN IF NOT EXISTS account_number VARCHAR(20),
     ADD COLUMN IF NOT EXISTS account_name VARCHAR(100);
+  
+  -- Update the CHECK constraint to allow more transaction types
+  ALTER TABLE transactions
+    DROP CONSTRAINT IF EXISTS transactions_type_check;
+  
+  ALTER TABLE transactions
+    ADD CONSTRAINT transactions_type_check 
+    CHECK (type IN ('deposit', 'withdrawal', 'investment', 'investment_roi', 'referral_bonus'));
 `;
 
 const createItemTable = `
