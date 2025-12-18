@@ -23,12 +23,13 @@ export const registerUser = async (data) => {
   if (existingUserEmail) throw new Error('User with this email already exists.');
   if (existingUserNumber) throw new Error('User with this phone number already exists.');
 
-  // FIX: Find the actual ID of the referrer to link them in the DB
+  // FIX: Find the actual ID of the referrer to link them in the DB permanently
   let referrerId = null;
   if (referralCode) {
     const referrer = await findUserByReferralCode(referralCode);
+
     if (!referrer) throw new Error("Invalid referral code.");
-    referrerId = referrer.id;
+    referrerId = referrer.id; // Store ID to create the permanent link
     await incrementReferralCount(referrer.id);
   }
 
@@ -41,14 +42,14 @@ export const registerUser = async (data) => {
   try {
     await sendOtpEmail(email, otp);
 
-    // FIX: Pass the referrerId to the repository so the link is permanent
+    // Pass the referrerId so the repository can save it to the referrer_id column
     await insertUser({
       fullName,
       phone,
       email,
       password: passwordHash,
-      referralCode, // The string they typed
-      referrerId,   // The actual User ID (THE LINK)
+      referralCode, // String code typed by user
+      referrerId,   // Numeric ID for database link
       ownReferralCode,
       otpCode: otp,
       otpExpiresAt:otpExpires,
@@ -87,6 +88,7 @@ const sendOtpEmail = async (to, otp) => {
 // Login user and return JWT token
 export const loginUser = async (data) => {
   const { phone, email, password } = data;
+
   if ((!phone && !email) || !password) {
     throw new Error('Please provide either phone or email, and password.');
   }
@@ -129,9 +131,11 @@ export const loginUser = async (data) => {
 //Get User Wallet Balance
 export const getUserBalance = async (userId) => {
   const user = await findUserById(userId);
+
   if (!user) {
     throw new Error("User not found");
   }
+
   return {
     full_name: user.full_name,
     balance: user.balance || 0.0,
@@ -182,6 +186,7 @@ export const editUserEmail = async (userId, newEmail) => {
   }
 };
 
+
 export const getUserProfile = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
@@ -208,13 +213,13 @@ export const getUserReferralData = async (userId) => {
     };
   }
 
-  // Get all referred users
-  const referredUsers = await getReferredUsers(user.id); // FIX: Use ID instead of Code for speed
+  // Get all referred users using ID link (Much faster and more reliable)
+  const referredUsers = await getReferredUsers(user.id);
   
-  // Calculate total commission
-  const totalCommission = await getTotalReferralCommission(user.id); // FIX: Use ID
+  // Calculate total commission using ID link
+  const totalCommission = await getTotalReferralCommission(user.id);
 
-  // Format team list
+  // Format team list exactly as Sahil defined
   const teamList = referredUsers.map(u => ({
     name: u.full_name,
     phone: u.phone_number,
@@ -224,7 +229,7 @@ export const getUserReferralData = async (userId) => {
   }));
 
   return {
-    total_commission: Math.round(totalCommission * 100) / 100,
+    total_commission: Math.round(totalCommission * 100) / 100, // Round to 2 decimal places
     team_count: referredUsers.length,
     team_list: teamList
   };
