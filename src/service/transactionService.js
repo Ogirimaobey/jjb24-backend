@@ -2,6 +2,7 @@ import axios from "axios";
 import dotenv from "dotenv";
 import { createTransaction, findTransactionByReference, updateTransactionStatus, createWithdrawalTransaction, getAllTransactionsByUserId, getWithdrawalTransactionsByUserId, getDepositTransactionsByUserId, getPendingWithdrawals } from "../repositories/transactionRepository.js";
 import { findUserById, updateUserBalance } from "../repositories/userRepository.js";
+import { getAllInvestmentsByUserId } from "../repositories/investmentRepository.js";
 
 dotenv.config();
 
@@ -22,7 +23,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
   }
 
   const reference = `TX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-  const transaction = await createTransaction(userId, amount, reference);
+  const transaction = await createTransaction(userId, amount, reference, 'deposit');
 
   // Get user's full name for customer details
   const customerName = user.full_name || email.split('@')[0] || 'Customer';
@@ -320,17 +321,54 @@ const getBankCode = async (bankName) => {
 
 
 
-//Get all transactions for a specific user
+//Get all transactions for a specific user (unified history including investments, ROI, and referral bonuses)
 export const getUserTransactions = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
 
+  // Get all transactions (deposits, withdrawals, investments, ROI, referral bonuses)
   const transactions = await getAllTransactionsByUserId(userId);
+  
+  // Format transactions with readable descriptions
+  const formattedTransactions = transactions.map(tx => {
+    let description = '';
+    let activityType = tx.type;
+    
+    switch(tx.type) {
+      case 'deposit':
+        description = `Deposit of ₦${Number(tx.amount).toLocaleString()}`;
+        break;
+      case 'withdrawal':
+        description = `Withdrawal of ₦${Number(tx.amount).toLocaleString()}${tx.status === 'pending' ? ' (Pending)' : tx.status === 'success' ? ' (Approved)' : ' (Failed)'}`;
+        break;
+      case 'investment':
+        description = `Investment of ₦${Number(tx.amount).toLocaleString()}`;
+        break;
+      case 'investment_roi':
+        description = `Daily Investment ROI: ₦${Number(tx.amount).toLocaleString()}`;
+        activityType = 'earning';
+        break;
+      case 'referral_bonus':
+        description = `Referral Commission: ₦${Number(tx.amount).toLocaleString()}`;
+        activityType = 'earning';
+        break;
+      default:
+        description = `${tx.type}: ₦${Number(tx.amount).toLocaleString()}`;
+    }
+    
+    return {
+      ...tx,
+      amount: Number(tx.amount),
+      description,
+      activityType,
+      date: tx.created_at
+    };
+  });
   
   return {
     message: "Transactions retrieved successfully",
-    transactions,
-    totalCount: transactions.length
+    transactions: formattedTransactions,
+    totalCount: formattedTransactions.length
   };
 };
 

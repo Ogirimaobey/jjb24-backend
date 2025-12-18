@@ -1,8 +1,9 @@
 import pool from '../config/database.js';
 import { insertInvestment, getAllInvestments, updateInvestmentEarnings, getAllInvestmentsByUserId, getInvestmentEarningsHistory} from '../repositories/investmentRepository.js';
-import { findUserById, updateUserBalance, getReferredUsers } from '../repositories/userRepository.js';
+import { findUserById, updateUserBalance, getReferredUsers, findUserByReferralCode } from '../repositories/userRepository.js';
 import { getItemByIdQuery } from '../repositories/itemRepository.js';
 import { getVipByIdQuery } from '../repositories/vipRepository.js';
+import { createInvestmentTransaction, createReferralBonusTransaction, createInvestmentRoiTransaction } from '../repositories/transactionRepository.js';
 
 //Create investment for User
 export const createInvestment = async (userId, itemId) => {
@@ -37,6 +38,25 @@ export const createInvestment = async (userId, itemId) => {
       },
       client
     );
+
+    // Create transaction record for investment
+    await createInvestmentTransaction(user.id, item.price, investment.id, client);
+
+    // Check if user was referred and credit referrer with commission
+    if (user.referral_code_used) {
+      const referrer = await findUserByReferralCode(user.referral_code_used);
+      if (referrer) {
+        // Calculate 5% commission on investment amount
+        const commission = Number(item.price) * 0.05;
+        const referrerNewBalance = Number(referrer.balance) + commission;
+        await updateUserBalance(referrer.id, referrerNewBalance, client);
+        
+        // Create referral bonus transaction
+        await createReferralBonusTransaction(referrer.id, commission, user.id, investment.id, client);
+        
+        console.log(`[createInvestment] Referral commission credited: ₦${commission} to user ${referrer.id} for referral of user ${user.id}`);
+      }
+    }
 
     await client.query('COMMIT');
     return investment;
@@ -80,7 +100,25 @@ export const createVipInvestment = async (userId, vipId) => {
       },
       client
     );
-    // console.log('Created CASPERVIP investment: ', investment);
+
+    // Create transaction record for investment
+    await createInvestmentTransaction(user.id, vip.price, investment.id, client);
+
+    // Check if user was referred and credit referrer with commission
+    if (user.referral_code_used) {
+      const referrer = await findUserByReferralCode(user.referral_code_used);
+      if (referrer) {
+        // Calculate 5% commission on investment amount
+        const commission = Number(vip.price) * 0.05;
+        const referrerNewBalance = Number(referrer.balance) + commission;
+        await updateUserBalance(referrer.id, referrerNewBalance, client);
+        
+        // Create referral bonus transaction
+        await createReferralBonusTransaction(referrer.id, commission, user.id, investment.id, client);
+        
+        console.log(`[createVipInvestment] Referral commission credited: ₦${commission} to user ${referrer.id} for referral of user ${user.id}`);
+      }
+    }
 
     await client.query('COMMIT');
     return investment;
@@ -113,7 +151,14 @@ export const processDailyEarnings = async () => {
 
     const newTotalEarning = Number(total_earning) + Number(daily_earning);
     await updateInvestmentEarnings(id, newTotalEarning);
+
+    // Create transaction record for daily ROI
+    await createInvestmentRoiTransaction(user_id, daily_earning, id);
+    
+    console.log(`[processDailyEarnings] Daily ROI credited: ₦${daily_earning} to user ${user_id} for investment ${id}`);
   }
+  
+  console.log(`[processDailyEarnings] ✅ Processed ${investments.length} investments`);
 };
 
 // Get all investments for a user with calculations
