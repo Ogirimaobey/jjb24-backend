@@ -1,6 +1,6 @@
 import pool from './src/config/database.js';
 
-// ... (All your SQL strings remain exactly the same) ...
+// 1. UPDATED: Added referrer_id to primary table creation
 const createUserTable = `
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -10,8 +10,9 @@ const createUserTable = `
     password_hash TEXT NOT NULL,
     referral_code_used VARCHAR(50),
     own_referral_code VARCHAR(50) UNIQUE,
+    referrer_id INTEGER REFERENCES users(id) ON DELETE SET NULL, /* THE FIX */
     is_admin BOOLEAN DEFAULT false,
-    balance NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    balance NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMPTZ DEFAULT NOW()
   );
 `;
@@ -25,11 +26,12 @@ const createTableAdmin = `
   );
 `;
 
+// UPDATED: Increased precision to NUMERIC(20, 2) for large VIP transactions
 const createTransactionsTable = `
   CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    amount NUMERIC(10, 2) NOT NULL,
+    amount NUMERIC(20, 2) NOT NULL, 
     status VARCHAR(20) CHECK (status IN ('pending', 'success', 'failed')) DEFAULT 'pending',
     reference VARCHAR(100) UNIQUE NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -51,8 +53,8 @@ const createInvestmentTable = `
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
-    daily_earning NUMERIC DEFAULT 0,
-    total_earning NUMERIC DEFAULT 0,
+    daily_earning NUMERIC(15, 2) DEFAULT 0,
+    total_earning NUMERIC(15, 2) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 `;
@@ -78,17 +80,19 @@ const alterTableInvestments = `
   );
 `;
 
+// UPDATED: Added referrer_id to the Alter block for safety
 const alterTableUsers = `
   ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE,
   ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false,
-  ADD COLUMN IF NOT EXISTS balance NUMERIC(10, 2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS balance NUMERIC(15, 2) DEFAULT 0.00,
   ADD COLUMN IF NOT EXISTS referral_count INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS referral_code_used VARCHAR(50), 
   ADD COLUMN IF NOT EXISTS own_referral_code VARCHAR(50) UNIQUE,
   ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS otp_code VARCHAR(10),  
   ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS referrer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   DROP COLUMN IF EXISTS type;
 `;
 
@@ -99,7 +103,6 @@ const alterTableTransactions = `
     ADD COLUMN IF NOT EXISTS account_number VARCHAR(20),
     ADD COLUMN IF NOT EXISTS account_name VARCHAR(100);
   
-  -- Update the CHECK constraint to allow more transaction types
   ALTER TABLE transactions
     DROP CONSTRAINT IF EXISTS transactions_type_check;
   
@@ -112,8 +115,8 @@ const createItemTable = `
   CREATE TABLE IF NOT EXISTS items (
     id SERIAL PRIMARY KEY,
     itemName VARCHAR(100) NOT NULL,
-    price NUMERIC(10, 2) NOT NULL,
-    dailyIncome NUMERIC(10, 2) NOT NULL,
+    price NUMERIC(15, 2) NOT NULL,
+    dailyIncome NUMERIC(15, 2) NOT NULL,
     itemImage VARCHAR(255) NOT NULL
   );
 `;
@@ -127,8 +130,8 @@ const createVipTable = `
   CREATE TABLE IF NOT EXISTS casper_vip (
     id SERIAL PRIMARY KEY,   
     name VARCHAR(100) NOT NULL,
-    price NUMERIC(10, 2) NOT NULL,
-    daily_earnings NUMERIC(10, 2) NOT NULL,
+    price NUMERIC(15, 2) NOT NULL,
+    daily_earnings NUMERIC(15, 2) NOT NULL,
     duration_days INTEGER NOT NULL,
     total_returns NUMERIC(20, 2) NOT NULL,
     image VARCHAR(255),
@@ -159,30 +162,22 @@ const setupDatabase = async () => {
     await client.query(alterTableTransactions);
     await client.query(createDailyTaskTable);
     
-    // Items (Regular)
     await client.query(createItemTable);
     await client.query(alterTableItems);
     
-    // VIP & Investments
     await client.query(createVipTable);
     await client.query(createInvestmentTable);
     await client.query(alterTableInvestments);
     
     console.log('Tables created/verified.');
-
-    // --- RUN SEEDING ---
     console.log('Seeding VIP Products...');
     await client.query(seedVipProducts);
     console.log('SUCCESS: VIP Products 101-104 ensured.');
-    // -------------------
 
     client.release();
-
   } catch (error) {
     console.error('Error setting up the database:', error);
   }
-  // Note: We do NOT call pool.end() here because this script runs on server startup
-  // and the pool needs to remain open for the application to use
 };
 
 setupDatabase();
