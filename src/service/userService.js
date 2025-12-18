@@ -23,11 +23,13 @@ export const registerUser = async (data) => {
   if (existingUserEmail) throw new Error('User with this email already exists.');
   if (existingUserNumber) throw new Error('User with this phone number already exists.');
 
+  // FIX: Find the actual ID of the referrer to link them in the DB
+  let referrerId = null;
   if (referralCode) {
-  const referrer = await findUserByReferralCode(referralCode);
-
-  if (!referrer) throw new Error("Invalid referral code.");
-  await incrementReferralCount(referrer.id);
+    const referrer = await findUserByReferralCode(referralCode);
+    if (!referrer) throw new Error("Invalid referral code.");
+    referrerId = referrer.id;
+    await incrementReferralCount(referrer.id);
   }
 
   const passwordHash = await hashPassword(password);
@@ -37,34 +39,34 @@ export const registerUser = async (data) => {
   const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
   try {
-  await sendOtpEmail(email, otp);
+    await sendOtpEmail(email, otp);
 
-   await insertUser({
-    fullName,
-    phone,
-    email,
-    password: passwordHash,
-    referralCode,
-    ownReferralCode,
-    otpCode: otp,
-    otpExpiresAt:otpExpires,
-  });
+    // FIX: Pass the referrerId to the repository so the link is permanent
+    await insertUser({
+      fullName,
+      phone,
+      email,
+      password: passwordHash,
+      referralCode, // The string they typed
+      referrerId,   // The actual User ID (THE LINK)
+      ownReferralCode,
+      otpCode: otp,
+      otpExpiresAt:otpExpires,
+    });
 
-  return {
-    message: "User registered successfully. Check your email for OTP.",
-    email,
-  };
-} catch (err) {
-  console.error("Error sending OTP:", err.message);
-  throw new Error("Failed to send verification email. Please try again.");
-}
-
+    return {
+      message: "User registered successfully. Check your email for OTP.",
+      email,
+    };
+  } catch (err) {
+    console.error("Error sending OTP:", err.message);
+    throw new Error("Failed to send verification email. Please try again.");
+  }
 };
 
 // Helper function to send OTP email
 const sendOtpEmail = async (to, otp) => {
   const transporter = nodemailer.createTransport({
-    // service: "gmail",
     host: "smtp.gmail.com",
     port: 587,
     secure: false,
@@ -85,7 +87,6 @@ const sendOtpEmail = async (to, otp) => {
 // Login user and return JWT token
 export const loginUser = async (data) => {
   const { phone, email, password } = data;
-
   if ((!phone && !email) || !password) {
     throw new Error('Please provide either phone or email, and password.');
   }
@@ -128,11 +129,9 @@ export const loginUser = async (data) => {
 //Get User Wallet Balance
 export const getUserBalance = async (userId) => {
   const user = await findUserById(userId);
-
   if (!user) {
     throw new Error("User not found");
   }
-
   return {
     full_name: user.full_name,
     balance: user.balance || 0.0,
@@ -183,7 +182,6 @@ export const editUserEmail = async (userId, newEmail) => {
   }
 };
 
-
 export const getUserProfile = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
@@ -211,10 +209,10 @@ export const getUserReferralData = async (userId) => {
   }
 
   // Get all referred users
-  const referredUsers = await getReferredUsers(referralCode);
+  const referredUsers = await getReferredUsers(user.id); // FIX: Use ID instead of Code for speed
   
   // Calculate total commission
-  const totalCommission = await getTotalReferralCommission(referralCode);
+  const totalCommission = await getTotalReferralCommission(user.id); // FIX: Use ID
 
   // Format team list
   const teamList = referredUsers.map(u => ({
@@ -226,7 +224,7 @@ export const getUserReferralData = async (userId) => {
   }));
 
   return {
-    total_commission: Math.round(totalCommission * 100) / 100, // Round to 2 decimal places
+    total_commission: Math.round(totalCommission * 100) / 100,
     team_count: referredUsers.length,
     team_list: teamList
   };
