@@ -201,11 +201,15 @@ export const getUserProfile = async (userId) => {
 
 // Get referral/team data for a user
 export const getUserReferralData = async (userId) => {
+  console.log(`[getUserReferralData] Fetching referral data for user ${userId}`);
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
 
+  console.log(`[getUserReferralData] User found: ${user.full_name}, Referral code: ${user.own_referral_code}`);
+
   const referralCode = user.own_referral_code;
   if (!referralCode) {
+    console.log(`[getUserReferralData] No referral code found for user ${userId}`);
     return {
       total_commission: 0,
       team_count: 0,
@@ -215,9 +219,18 @@ export const getUserReferralData = async (userId) => {
 
   // Get all referred users using ID link (Much faster and more reliable)
   const referredUsers = await getReferredUsers(user.id);
+  console.log(`[getUserReferralData] Found ${referredUsers.length} referred users`);
   
-  // Calculate total commission using ID link
-  const totalCommission = await getTotalReferralCommission(user.id);
+  // Calculate total commission from transactions table (more accurate than calculating from investments)
+  // This pulls actual commission transactions instead of calculating from investment totals
+  const commissionQuery = `
+    SELECT COALESCE(SUM(amount), 0) as total_commission
+    FROM transactions
+    WHERE user_id = $1 AND type = 'referral_bonus' AND status = 'success'
+  `;
+  const { rows: commissionRows } = await pool.query(commissionQuery, [userId]);
+  const totalCommission = parseFloat(commissionRows[0]?.total_commission || 0);
+  console.log(`[getUserReferralData] Total commission from transactions: ₦${totalCommission}`);
 
   // Format team list exactly as Sahil defined
   const teamList = referredUsers.map(u => ({
@@ -227,6 +240,8 @@ export const getUserReferralData = async (userId) => {
     joined_date: u.created_at,
     balance: parseFloat(u.balance || 0)
   }));
+
+  console.log(`[getUserReferralData] Returning data: team_count=${referredUsers.length}, total_commission=₦${totalCommission}`);
 
   return {
     total_commission: Math.round(totalCommission * 100) / 100, // Round to 2 decimal places
