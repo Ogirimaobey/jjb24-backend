@@ -26,11 +26,11 @@ export const registerUser = async (data) => {
   // FIX: Find the actual ID of the referrer to link them in the DB permanently
   let referrerId = null;
   if (referralCode) {
-    const referrer = await findUserByReferralCode(referralCode);
+  const referrer = await findUserByReferralCode(referralCode);
 
-    if (!referrer) throw new Error("Invalid referral code.");
+  if (!referrer) throw new Error("Invalid referral code.");
     referrerId = referrer.id; // Store ID to create the permanent link
-    await incrementReferralCount(referrer.id);
+  await incrementReferralCount(referrer.id);
   }
 
   const passwordHash = await hashPassword(password);
@@ -40,29 +40,29 @@ export const registerUser = async (data) => {
   const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
   try {
-    await sendOtpEmail(email, otp);
+  await sendOtpEmail(email, otp);
 
     // Pass the referrerId so the repository can save it to the referrer_id column
-    await insertUser({
-      fullName,
-      phone,
-      email,
-      password: passwordHash,
+   await insertUser({
+    fullName,
+    phone,
+    email,
+    password: passwordHash,
       referralCode, // String code typed by user
       referrerId,   // Numeric ID for database link
-      ownReferralCode,
-      otpCode: otp,
-      otpExpiresAt:otpExpires,
-    });
+    ownReferralCode,
+    otpCode: otp,
+    otpExpiresAt:otpExpires,
+  });
 
-    return {
-      message: "User registered successfully. Check your email for OTP.",
-      email,
-    };
-  } catch (err) {
-    console.error("Error sending OTP:", err.message);
-    throw new Error("Failed to send verification email. Please try again.");
-  }
+  return {
+    message: "User registered successfully. Check your email for OTP.",
+    email,
+  };
+} catch (err) {
+  console.error("Error sending OTP:", err.message);
+  throw new Error("Failed to send verification email. Please try again.");
+}
 };
 
 // Helper function to send OTP email
