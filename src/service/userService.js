@@ -128,7 +128,7 @@ export const loginUser = async (data) => {
   };
 };
 
-//Get User Wallet Balance
+// Get User Wallet Balance (FIXED & SELF-HEALING)
 export const getUserBalance = async (userId) => {
   const user = await findUserById(userId);
 
@@ -136,9 +136,25 @@ export const getUserBalance = async (userId) => {
     throw new Error("User not found");
   }
 
+  // --- THE FIX STARTS HERE ---
+  // If the user exists but has NO referral code (NULL in database),
+  // we generate one right now and save it.
+  if (!user.own_referral_code) {
+    const newCode = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    
+    // Update the database directly to save the new code permanently
+    await pool.query("UPDATE users SET own_referral_code = $1 WHERE id = $2", [newCode, userId]);
+    
+    // Update the local variable so we send it back to the frontend immediately
+    user.own_referral_code = newCode;
+  }
+  // --- THE FIX ENDS HERE ---
+
   return {
     full_name: user.full_name,
     balance: user.balance || 0.0,
+    phone_number: user.phone_number,      // Added so profile can show phone
+    own_referral_code: user.own_referral_code // <--- THIS WAS MISSING
   };
 };
 
@@ -220,7 +236,7 @@ export const getUserReferralData = async (userId) => {
   // Get all referred users using ID link (Much faster and more reliable)
   const referredUsers = await getReferredUsers(user.id);
   console.log(`[getUserReferralData] Found ${referredUsers.length} referred users`);
-  
+   
   // Calculate total commission from transactions table (more accurate than calculating from investments)
   // This pulls actual commission transactions instead of calculating from investment totals
   const commissionQuery = `
