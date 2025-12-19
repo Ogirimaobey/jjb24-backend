@@ -6,7 +6,8 @@ import { insertUser, findUserByPhone,
   findUserByEmail, findUserById, 
   findUserByReferralCode, incrementReferralCount, updateUserEmail,
   updateUserVerification, updateUserBalance, findUserEmailByUserId,
-  getReferredUsers, getTotalReferralCommission
+  getReferredUsers, getTotalReferralCommission,
+  createTransaction // <--- ADDED THIS IMPORT (Critical for Receipt Printing)
  } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
@@ -151,7 +152,7 @@ export const getUserBalance = async (userId) => {
   };
 };
 
-// Verify User OTP (UPDATED: Hybrid Model ₦200 for User, ₦100 for Referrer)
+// Verify User OTP (UPDATED: Hybrid Model ₦200 for User, ₦100 for Referrer + RECEIPTS)
 export const verifyUserOtp = async (email, otp) => {
   const user = await findUserByEmail(email);
   if (!user) throw new Error("User not found");
@@ -168,6 +169,16 @@ export const verifyUserOtp = async (email, otp) => {
   const welcomeBonus = 200.0;
   const newBalance = Number(user.balance) + welcomeBonus;
   await updateUserBalance(user.id, newBalance);
+  
+  // --- CREATE RECEIPT FOR NEW USER ---
+  await createTransaction({
+      userId: user.id,
+      amount: welcomeBonus,
+      type: 'welcome_bonus',
+      description: 'Registration Bonus',
+      status: 'success'
+  });
+  
   console.log(`[Bonus] User ${user.id} verified. Earned ₦${welcomeBonus}`);
 
   // 3. Pay the Referrer - ₦100 (If they exist)
@@ -180,6 +191,15 @@ export const verifyUserOtp = async (email, otp) => {
         
         // Update Referrer Balance
         await updateUserBalance(referrer.id, referrerNewBalance);
+
+        // --- CREATE RECEIPT FOR REFERRER (Fixes the 0 Commission Display) ---
+        await createTransaction({
+            userId: referrer.id,
+            amount: referralBonus,
+            type: 'referral_bonus',
+            description: `Referral Bonus for ${user.full_name}`,
+            status: 'success'
+        });
         
         console.log(`[Bonus] Referrer ${referrer.id} earned ₦${referralBonus} for inviting User ${user.id}`);
       }
