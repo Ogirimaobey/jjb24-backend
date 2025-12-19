@@ -128,6 +128,12 @@ export const requestWithdrawal = async (userId, amount, bankName, accountNumber,
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
 
+  // --- NEW: Enforce Minimum Withdrawal of 800 ---
+  if (Number(amount) < 800) {
+    throw new Error("Minimum withdrawal amount is ₦800");
+  }
+  // ----------------------------------------------
+
   if (Number(user.balance) < Number(amount)) {
     throw new Error("Insufficient balance");
   }
@@ -328,7 +334,7 @@ export const getUserTransactions = async (userId) => {
 
   // Get all transactions (deposits, withdrawals, investments, ROI, referral bonuses)
   const transactions = await getAllTransactionsByUserId(userId);
-  
+   
   // Format transactions with readable descriptions
   const formattedTransactions = transactions.map(tx => {
     let description = '';
@@ -364,7 +370,7 @@ export const getUserTransactions = async (userId) => {
       date: tx.created_at
     };
   });
-  
+   
   return {
     message: "Transactions retrieved successfully",
     transactions: formattedTransactions,
@@ -378,7 +384,7 @@ export const getUserWithdrawalTransactions = async (userId) => {
   if (!user) throw new Error("User not found");
 
   const transactions = await getWithdrawalTransactionsByUserId(userId);
-  
+   
   return {
     message: "Withdrawal transactions retrieved successfully",
     transactions,
@@ -392,7 +398,7 @@ export const getUserDepositTransactions = async (userId) => {
   if (!user) throw new Error("User not found");
 
   const transactions = await getDepositTransactionsByUserId(userId);
-  
+   
   return {
     message: "Deposit transactions retrieved successfully",
     transactions,
