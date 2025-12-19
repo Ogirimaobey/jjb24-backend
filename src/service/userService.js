@@ -136,29 +136,22 @@ export const getUserBalance = async (userId) => {
     throw new Error("User not found");
   }
 
-  // --- THE FIX STARTS HERE ---
-  // If the user exists but has NO referral code (NULL in database),
-  // we generate one right now and save it.
+  // Self-Heal: Generate code if missing
   if (!user.own_referral_code) {
     const newCode = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    
-    // Update the database directly to save the new code permanently
     await pool.query("UPDATE users SET own_referral_code = $1 WHERE id = $2", [newCode, userId]);
-    
-    // Update the local variable so we send it back to the frontend immediately
     user.own_referral_code = newCode;
   }
-  // --- THE FIX ENDS HERE ---
 
   return {
     full_name: user.full_name,
     balance: user.balance || 0.0,
-    phone_number: user.phone_number,      // Added so profile can show phone
-    own_referral_code: user.own_referral_code // <--- THIS WAS MISSING
+    phone_number: user.phone_number,
+    own_referral_code: user.own_referral_code 
   };
 };
 
-// Verify User OTP
+// Verify User OTP (UPDATED: Hybrid Model ₦200 for User, ₦100 for Referrer)
 export const verifyUserOtp = async (email, otp) => {
   const user = await findUserByEmail(email);
   if (!user) throw new Error("User not found");
@@ -168,15 +161,37 @@ export const verifyUserOtp = async (email, otp) => {
 
   if (new Date() > user.otp_expires_at) throw new Error("OTP expired");
 
+  // 1. Mark User as Verified
   await updateUserVerification(email, true);
- 
-  const referralBonus = 200.0;
-  const newBalance = Number(user.balance) + referralBonus;
+
+  // 2. Pay the New User (Referee) - ₦200
+  const welcomeBonus = 200.0;
+  const newBalance = Number(user.balance) + welcomeBonus;
   await updateUserBalance(user.id, newBalance);
+  console.log(`[Bonus] User ${user.id} verified. Earned ₦${welcomeBonus}`);
+
+  // 3. Pay the Referrer - ₦100 (If they exist)
+  if (user.referrer_id) {
+    try {
+      const referrer = await findUserById(user.referrer_id);
+      if (referrer) {
+        const referralBonus = 100.0; // The Instant ₦100 Reward
+        const referrerNewBalance = Number(referrer.balance) + referralBonus;
+        
+        // Update Referrer Balance
+        await updateUserBalance(referrer.id, referrerNewBalance);
+        
+        console.log(`[Bonus] Referrer ${referrer.id} earned ₦${referralBonus} for inviting User ${user.id}`);
+      }
+    } catch (err) {
+      console.error("[Bonus Error] Failed to pay referrer:", err.message);
+      // We do not fail the verification just because the referrer bonus failed
+    }
+  }
 
   return {
     success: true,
-    message: `OTP verified successfully! ₦${referralBonus} bonus added to your wallet.`,
+    message: `OTP verified successfully! ₦${welcomeBonus} bonus added to your wallet.`,
     newBalance,
   };
 };
