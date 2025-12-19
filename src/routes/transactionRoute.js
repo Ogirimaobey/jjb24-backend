@@ -47,16 +47,22 @@ router.post("/verify", async (req, res) => {
 });
 
 
-// Get user balance
-router.get('/balance/:id',verifyToken, async (req, res) => {  
+// Get user balance (FIXED BUG HERE)
+router.get('/balance/:id', verifyToken, async (req, res) => {  
   try {
-    const userId = req.params;
-    if (!userId) {
-      return res.status(401).json({ message: 'Unauthorized: User ID missing' });}
-      const balance = await getUserBalance(userId);
+    // FIX: Destructure 'id' from params. 
+    // Previous code 'const userId = req.params' returned an object, causing DB error.
+    const { id } = req.params; 
+    
+    if (!id) {
+      return res.status(400).json({ message: 'User ID missing' });
+    }
+    
+    const balance = await getUserBalance(id);
     return res.json({ balance });
   } catch (err) {
-     return res.status(500).json({ message: 'Server error' }); }
+     return res.status(500).json({ message: 'Server error' }); 
+  }
 });
 
 // --- UPDATED: WITHDRAWAL REQUEST (NOW CHECKS PIN) ---
@@ -78,6 +84,7 @@ router.post("/withdraw", verifyToken, async (req, res) => {
     res.status(200).json({ success: true, ...result });
 
   } catch (err) {
+    // This catches "Incorrect PIN" errors too
     res.status(400).json({ success: false, message: err.message });
   }
 });
@@ -85,7 +92,7 @@ router.post("/withdraw", verifyToken, async (req, res) => {
 
 
 //Admin approves/rejects withdrawal
-router.patch("/approve/:reference",verifyToken, verifyAdmin, async (req, res) => {
+router.patch("/approve/:reference", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { reference } = req.params;
     const { approve } = req.body;
