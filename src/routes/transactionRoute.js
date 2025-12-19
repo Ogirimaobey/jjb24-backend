@@ -1,7 +1,7 @@
 import express from 'express';
 import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal, getUserTransactions, getUserWithdrawalTransactions, getUserDepositTransactions } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
-import { getUserBalance } from '../service/userService.js';
+import { getUserBalance, verifyWithdrawalPin } from '../service/userService.js'; // <--- IMPORT PIN VERIFIER
 
 const router = express.Router();
 
@@ -9,18 +9,12 @@ const router = express.Router();
 router.post('/initialize', verifyToken, async (req, res) => {
   try {
     console.log('[Payment Route] ===== PAYMENT INITIALIZATION REQUEST =====');
-    console.log('[Payment Route] Request body:', req.body);
-    console.log('[Payment Route] User from token:', { id: req.user.id, email: req.user.email, phone: req.user.phone });
-    
     const {amount} = req.body;
     const {id: userId, email, phone } = req.user;
     
-    console.log('[Payment Route] Initializing payment for:', { userId, amount, email, phone });
+    console.log('[Payment Route] Initializing payment for:', { userId, amount });
     
     const data = await initializePayment(userId, amount, email, phone);
-    
-    console.log('[Payment Route] ✅ Payment initialized successfully');
-    console.log('[Payment Route] Payment link:', data.paymentLink);
     
     res.status(200).json({
       success: true,
@@ -28,9 +22,7 @@ router.post('/initialize', verifyToken, async (req, res) => {
       data,
     });
   } catch (err) {
-    console.error('[Payment Route] ❌ Payment initialization failed:');
     console.error('[Payment Route] Error:', err.message);
-    console.error('[Payment Route] Stack:', err.stack);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -38,19 +30,14 @@ router.post('/initialize', verifyToken, async (req, res) => {
 
 router.post("/verify", async (req, res) => {
   try {
-
     const signature = req.headers["verif-hash"];
-    console.log("Received signature:", signature);
-
     const secret = process.env.FLW_SECRET_HASH;
-    console.log("Expected secret:", secret);
 
     if (!signature || signature !== secret) {
       return res.status(401).json({ success: false, message: "Invalid signature" });
     }
 
     const data = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
-
     const result = await verifyPayment(data);
     return res.status(200).json(result);
 
@@ -58,8 +45,6 @@ router.post("/verify", async (req, res) => {
     return res.status(400).json({ success: false, message: err.message });
   }
 });
-
-
 
 
 // Get user balance
@@ -72,19 +57,31 @@ router.get('/balance/:id',verifyToken, async (req, res) => {
     return res.json({ balance });
   } catch (err) {
      return res.status(500).json({ message: 'Server error' }); }
-}
-);
+});
 
-//withdrawal request by user
+// --- UPDATED: WITHDRAWAL REQUEST (NOW CHECKS PIN) ---
 router.post("/withdraw", verifyToken, async (req, res) => {
   try {
-    const { amount, bank_name, account_number, account_name } = req.body;
+    const { amount, bank_name, account_number, account_name, pin } = req.body;
+
+    // 1. Validate PIN Input
+    if (!pin) {
+        return res.status(400).json({ success: false, message: "Withdrawal PIN is required" });
+    }
+
+    // 2. Verify PIN against Database
+    // If this fails, it throws an error and jumps to 'catch'
+    await verifyWithdrawalPin(req.user.id, pin);
+
+    // 3. Proceed with Withdrawal
     const result = await requestWithdrawal(req.user.id, amount, bank_name, account_number, account_name);
     res.status(200).json({ success: true, ...result });
+
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
 });
+// ----------------------------------------------------
 
 
 //Admin approves/rejects withdrawal
@@ -109,7 +106,6 @@ router.get("/history", verifyToken, async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
- 
 });
 
 // Get withdrawal transactions for the current logged-in user
