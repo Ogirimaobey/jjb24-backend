@@ -2,6 +2,7 @@ import axios from "axios";
 import dotenv from "dotenv";
 import { createTransaction, findTransactionByReference, updateTransactionStatus, createWithdrawalTransaction, getAllTransactionsByUserId, getWithdrawalTransactionsByUserId, getDepositTransactionsByUserId, getPendingWithdrawals } from "../repositories/transactionRepository.js";
 import { findUserById, updateUserBalance } from "../repositories/userRepository.js";
+import { getAllInvestmentsByUserId } from "../repositories/investmentRepository.js";
 
 dotenv.config();
 
@@ -22,7 +23,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
   }
 
   const reference = `TX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-  const transaction = await createTransaction(userId, amount, reference);
+  const transaction = await createTransaction(userId, amount, reference, 'deposit');
 
   // Get user's full name for customer details
   const customerName = user.full_name || email.split('@')[0] || 'Customer';
@@ -90,7 +91,7 @@ console.log("[initializePayment] Flutterwave response status:", response.status)
       throw new Error(error.response.data.message);
     } else {
       throw new Error(`Payment initialization failed: ${error.message}`);
-    }
+  }
   }
 };
 
@@ -101,7 +102,7 @@ export const verifyPayment = async (event) => {
   const transaction = await findTransactionByReference(tx_ref);
   if (!transaction) throw new Error("Transaction not found");
 
-  if (
+   if (
     status === "successful" ||
     event.event === "transfer.completed" ||
     event.event === "payment.completed" ||
@@ -126,6 +127,12 @@ export const verifyPayment = async (event) => {
 export const requestWithdrawal = async (userId, amount, bankName, accountNumber, accountName) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
+
+  // --- NEW: Enforce Minimum Withdrawal of 800 ---
+  if (Number(amount) < 800) {
+    throw new Error("Minimum withdrawal amount is ₦800");
+  }
+  // ----------------------------------------------
 
   if (Number(user.balance) < Number(amount)) {
     throw new Error("Insufficient balance");
@@ -156,62 +163,134 @@ export const requestWithdrawal = async (userId, amount, bankName, accountNumber,
 
 // Admin approves or rejects withdrawal
 export const approveWithdrawal = async (reference, approve = true) => {
-  const transaction = await findTransactionByReference(reference);
-  if (!transaction) throw new Error("Transaction not found");
+  console.log(`[approveWithdrawal] Starting withdrawal ${approve ? 'approval' : 'rejection'} for reference: ${reference}`);
+  
+  try {
+    const transaction = await findTransactionByReference(reference);
+    if (!transaction) {
+      console.error(`[approveWithdrawal] Transaction not found: ${reference}`);
+      throw new Error("Transaction not found");
+    }
 
-  if (transaction.status !== "pending") throw new Error("Already proccessed");
+    console.log(`[approveWithdrawal] Transaction found:`, {
+      id: transaction.id,
+      status: transaction.status,
+      amount: transaction.amount,
+      bank_name: transaction.bank_name,
+      account_number: transaction.account_number
+    });
+
+    if (transaction.status !== "pending") {
+      console.error(`[approveWithdrawal] Transaction already processed. Status: ${transaction.status}`);
+      throw new Error("Already processed");
+    }
 
   const user = await findUserById(transaction.user_id);
-  if (!user) throw new Error("User not found");
+    if (!user) {
+      console.error(`[approveWithdrawal] User not found: ${transaction.user_id}`);
+      throw new Error("User not found");
+    }
 
-  const bankCode = await getBankCode(transaction.bank_name);
-
-  try {
     if (approve) {
+      console.log(`[approveWithdrawal] Processing approval...`);
+      
+      // Get bank code with error handling
+      let bankCode;
+      try {
+        bankCode = await getBankCode(transaction.bank_name);
+        console.log(`[approveWithdrawal] Bank code retrieved: ${bankCode} for ${transaction.bank_name}`);
+      } catch (bankError) {
+        console.error(`[approveWithdrawal] Failed to get bank code:`, bankError.message);
+        throw new Error(`Failed to get bank code: ${bankError.message}`);
+      }
+
+      // Calculate net payout (amount - 9%)
+      const grossAmount = Number(transaction.amount);
+      const netAmount = Math.round(grossAmount * 0.91 * 100) / 100; // Round to 2 decimal places
+      console.log(`[approveWithdrawal] Gross amount: ₦${grossAmount}, Net payout: ₦${netAmount} (9% fee deducted)`);
+
       const payload = {
         account_bank: bankCode, 
         account_number: transaction.account_number,
-        amount: transaction.amount,
+        amount: netAmount, // Use net amount (after 9% deduction)
         currency: "NGN",
         narration: "JJB24 Wallet Withdrawal",
         reference: transaction.reference,
       };
 
+      console.log(`[approveWithdrawal] Flutterwave payload:`, payload);
+
       try {
         const response = await axios.post(`${FLW_BASE_URL}/transfers`, payload, {
           headers: {
             Authorization: `Bearer ${FLW_SECRET_KEY}`,
+            "Content-Type": "application/json",
           },
         });
 
-        console.log("Flutterwave response:", response.data);
+        console.log("[approveWithdrawal] Flutterwave response:", JSON.stringify(response.data, null, 2));
 
         if (response.data.status === "success") {
           await updateTransactionStatus(reference, "success");
-          console.log(`Withdrawal sent to ${transaction.account_name} (${transaction.account_number})`);
+          console.log(`[approveWithdrawal] ✅ Withdrawal approved and sent to ${transaction.account_name} (${transaction.account_number})`);
+          return {
+            message: `Withdrawal approved & sent. Net payout: ₦${netAmount.toLocaleString()}`,
+            transactionRef: reference,
+            grossAmount: grossAmount,
+            netAmount: netAmount,
+          };
         } else {
-          throw new Error("Bank transfer failed at Flutterwave");
+          console.error("[approveWithdrawal] Flutterwave returned non-success status:", response.data);
+          const errorMsg = response.data.message || "Bank transfer failed at Flutterwave";
+          throw new Error(errorMsg);
         }
       } catch (error) {
-        console.error(
-          "Flutterwave error:",
-          error.response?.data || error.message
-        );
-        throw new Error(
-          error.response?.data?.message || "Flutterwave transfer failed"
-        );
+        console.error("[approveWithdrawal] Flutterwave API error:", {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          statusText: error.response?.statusText
+        });
+        
+        const errorMessage = error.response?.data?.message || error.message || "Flutterwave transfer failed";
+        
+        // Provide specific guidance for common Flutterwave errors
+        let detailedError = errorMessage;
+        if (errorMessage.toLowerCase().includes("cannot be processed") || 
+            errorMessage.toLowerCase().includes("contact your account administrator")) {
+          console.error("[approveWithdrawal] ⚠️ FLUTTERWAVE ACCOUNT CONFIGURATION ISSUE DETECTED");
+          console.error("[approveWithdrawal] This error typically means:");
+          console.error("[approveWithdrawal] 1. IP Whitelisting: Server IP not whitelisted in Flutterwave dashboard");
+          console.error("[approveWithdrawal] 2. Account Verification: KYC/Compliance not fully approved");
+          console.error("[approveWithdrawal] 3. Transfer Permissions: Bank transfers not enabled for account");
+          console.error("[approveWithdrawal] 4. Insufficient Balance: Flutterwave account balance too low");
+          console.error("[approveWithdrawal] Transfer Details:", {
+            amount: netAmount,
+            bank: transaction.bank_name,
+            bankCode: bankCode,
+            accountNumber: transaction.account_number,
+            reference: transaction.reference
+          });
+          
+          detailedError = `${errorMessage}. Please check Flutterwave dashboard: IP whitelist, account verification (KYC), transfer permissions, and account balance. Contact Flutterwave support (hi@flutterwavego.com) if issue persists.`;
+        }
+        
+        throw new Error(detailedError);
       }
     } else {
+      console.log(`[approveWithdrawal] Processing rejection...`);
       const refundBalance = Number(user.balance) + Number(transaction.amount);
       await updateUserBalance(user.id, refundBalance);
       await updateTransactionStatus(reference, "failed");
-    }
+      console.log(`[approveWithdrawal] ✅ Withdrawal rejected. Balance refunded to user.`);
 
     return {
-      message: `Withdrawal ${approve ? "approved & sent" : "rejected"}`,
+        message: `Withdrawal rejected`,
       transactionRef: reference,
     };
+    }
   } catch (error) {
+    console.error(`[approveWithdrawal] Error processing withdrawal:`, error);
     throw new Error(`Error processing withdrawal: ${error.message}`);
   }
 };
@@ -248,17 +327,54 @@ const getBankCode = async (bankName) => {
 
 
 
-//Get all transactions for a specific user
+//Get all transactions for a specific user (unified history including investments, ROI, and referral bonuses)
 export const getUserTransactions = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
 
+  // Get all transactions (deposits, withdrawals, investments, ROI, referral bonuses)
   const transactions = await getAllTransactionsByUserId(userId);
-  
+   
+  // Format transactions with readable descriptions
+  const formattedTransactions = transactions.map(tx => {
+    let description = '';
+    let activityType = tx.type;
+    
+    switch(tx.type) {
+      case 'deposit':
+        description = `Deposit of ₦${Number(tx.amount).toLocaleString()}`;
+        break;
+      case 'withdrawal':
+        description = `Withdrawal of ₦${Number(tx.amount).toLocaleString()}${tx.status === 'pending' ? ' (Pending)' : tx.status === 'success' ? ' (Approved)' : ' (Failed)'}`;
+        break;
+      case 'investment':
+        description = `Investment of ₦${Number(tx.amount).toLocaleString()}`;
+        break;
+      case 'investment_roi':
+        description = `Daily Investment ROI: ₦${Number(tx.amount).toLocaleString()}`;
+        activityType = 'earning';
+        break;
+      case 'referral_bonus':
+        description = `Referral Commission: ₦${Number(tx.amount).toLocaleString()}`;
+        activityType = 'earning';
+        break;
+      default:
+        description = `${tx.type}: ₦${Number(tx.amount).toLocaleString()}`;
+    }
+    
+    return {
+      ...tx,
+      amount: Number(tx.amount),
+      description,
+      activityType,
+      date: tx.created_at
+    };
+  });
+   
   return {
     message: "Transactions retrieved successfully",
-    transactions,
-    totalCount: transactions.length
+    transactions: formattedTransactions,
+    totalCount: formattedTransactions.length
   };
 };
 
@@ -268,7 +384,7 @@ export const getUserWithdrawalTransactions = async (userId) => {
   if (!user) throw new Error("User not found");
 
   const transactions = await getWithdrawalTransactionsByUserId(userId);
-  
+   
   return {
     message: "Withdrawal transactions retrieved successfully",
     transactions,
@@ -282,7 +398,7 @@ export const getUserDepositTransactions = async (userId) => {
   if (!user) throw new Error("User not found");
 
   const transactions = await getDepositTransactionsByUserId(userId);
-  
+   
   return {
     message: "Deposit transactions retrieved successfully",
     transactions,
