@@ -54,6 +54,7 @@ router.post('/createVipInvestment/:vipId', verifyToken, async (req, res) => {
     res.status(201).json({ success: true, data: casperVIPInvestment });
   } 
   catch (error) {
+    console.error("Error creating VIP investment:", error); // Added log
     res.status(400).json({ success: false, message: error.message });
   }
 });
@@ -64,6 +65,7 @@ router.get('/allVipInvestment', verifyToken, async (req, res) => {
     const data = await getAllVips();
     res.json(data);
   } catch (e) {
+    console.error("Error fetching VIPs:", e); // Added log
     res.status(500).json({ message: e.message });
   }
 });
