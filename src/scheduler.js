@@ -1,5 +1,6 @@
 import cron from 'node-cron';
-import pool from '../config/database.js';
+// FIX: Changed '../config' to './config' because both files are in the 'src' folder
+import pool from './config/database.js'; 
 
 console.log('[Scheduler] Investment Expiration Engine Started...');
 
