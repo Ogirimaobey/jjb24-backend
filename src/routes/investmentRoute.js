@@ -44,9 +44,6 @@ router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
   }
 });
 
-export default router;
-
-
 //Create CASPERVIP investment for users
 router.post('/createVipInvestment/:vipId', verifyToken, async (req, res) => {
   try {
@@ -54,7 +51,6 @@ router.post('/createVipInvestment/:vipId', verifyToken, async (req, res) => {
     let { vipId } = req.params;
 
     const casperVIPInvestment = await createVipInvestment(userId, vipId);
-    // console.log("Vip investment details", casperVIPInvestment)
     res.status(201).json({ success: true, data: casperVIPInvestment });
   } 
   catch (error) {
@@ -71,3 +67,5 @@ router.get('/allVipInvestment', verifyToken, async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+
+export default router; // <--- MOVED TO BOTTOM (Correct Position)
