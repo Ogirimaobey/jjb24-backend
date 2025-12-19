@@ -45,7 +45,33 @@ export const createTransaction = async ({ userId, amount, type, status = 'succes
   return rows[0];
 };
 
-// --- NEW: MLM LOGIC - FIND 3 LEVELS OF UPLINES ---
+// --- NEW: PIN MANAGEMENT (Security) ---
+export const setUserPin = async (userId, hashedPin) => {
+  const query = `UPDATE users SET transaction_pin = $1 WHERE id = $2 RETURNING id`;
+  const { rows } = await pool.query(query, [hashedPin, userId]);
+  return rows[0];
+};
+
+export const getUserPin = async (userId) => {
+  const query = `SELECT transaction_pin FROM users WHERE id = $1`;
+  const { rows } = await pool.query(query, [userId]);
+  return rows[0]?.transaction_pin;
+};
+
+// --- NEW: FETCH ACTIVE INVESTMENTS (For Days Left Timer) ---
+export const getActiveInvestments = async (userId) => {
+  // Joins investments with items table to get duration and name
+  const query = `
+    SELECT i.*, p.itemname, p.duration, p.dailyincome 
+    FROM investments i
+    JOIN items p ON i.plan_id = p.id
+    WHERE i.user_id = $1 AND i.status = 'active'
+  `;
+  const { rows } = await pool.query(query, [userId]);
+  return rows;
+};
+
+// --- MLM LOGIC - FIND 3 LEVELS OF UPLINES ---
 export const getUplineChain = async (userId) => {
   const client = await pool.connect();
   try {
