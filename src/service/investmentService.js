@@ -4,6 +4,8 @@ import { findUserById, updateUserBalance, getReferredUsers, findUserByReferralCo
 import { getItemByIdQuery } from '../repositories/itemRepository.js';
 import { getVipByIdQuery } from '../repositories/vipRepository.js';
 import { createInvestmentTransaction, createReferralBonusTransaction, createInvestmentRoiTransaction } from '../repositories/transactionRepository.js';
+// --- NEW IMPORT: MLM LOGIC ---
+import { distributeInvestmentCommissions } from './userService.js'; 
 
 //Create investment for User
 export const createInvestment = async (userId, itemId) => {
@@ -32,7 +34,7 @@ export const createInvestment = async (userId, itemId) => {
       {
         userId,
         itemId: item.id,              
-        casperVipId: null,       
+        casperVipId: null,        
         dailyEarning: dailyEarning,
         totalEarning: 0
       },
@@ -42,21 +44,18 @@ export const createInvestment = async (userId, itemId) => {
     // Create transaction record for investment
     await createInvestmentTransaction(user.id, item.price, investment.id, client);
 
-    // Check if user was referred and credit referrer with commission
-    if (user.referral_code_used) {
-      const referrer = await findUserByReferralCode(user.referral_code_used);
-      if (referrer) {
-        // Calculate 5% commission on investment amount
-        const commission = Number(item.price) * 0.05;
-        const referrerNewBalance = Number(referrer.balance) + commission;
-        await updateUserBalance(referrer.id, referrerNewBalance, client);
-        
-        // Create referral bonus transaction
-        await createReferralBonusTransaction(referrer.id, commission, user.id, investment.id, client);
-        
-        console.log(`[createInvestment] Referral commission credited: ₦${commission} to user ${referrer.id} for referral of user ${user.id}`);
-      }
+    // --- NEW: TRIGGER 5-3-2 MLM COMMISSION ---
+    // This replaces the old single-level 5% logic.
+    // We do this AFTER the transaction is recorded but BEFORE committing.
+    try {
+        await distributeInvestmentCommissions(user.id, Number(item.price));
+        console.log(`[MLM] Distributed commissions for Investment ${investment.id}`);
+    } catch (commError) {
+        console.error(`[MLM Error] Failed to distribute commissions: ${commError.message}`);
+        // We do NOT rollback here because the investment itself was successful.
+        // Commissions can be fixed manually if this fails, but we don't want to kill the user's purchase.
     }
+    // ------------------------------------------
 
     await client.query('COMMIT');
     return investment;
@@ -94,7 +93,7 @@ export const createVipInvestment = async (userId, vipId) => {
       {
         userId,
         itemId: null,              
-        casperVipId: vip.id,       
+        casperVipId: vip.id,        
         dailyEarning: dailyEarning,
         totalEarning: 0
       },
@@ -104,21 +103,14 @@ export const createVipInvestment = async (userId, vipId) => {
     // Create transaction record for investment
     await createInvestmentTransaction(user.id, vip.price, investment.id, client);
 
-    // Check if user was referred and credit referrer with commission
-    if (user.referral_code_used) {
-      const referrer = await findUserByReferralCode(user.referral_code_used);
-      if (referrer) {
-        // Calculate 5% commission on investment amount
-        const commission = Number(vip.price) * 0.05;
-        const referrerNewBalance = Number(referrer.balance) + commission;
-        await updateUserBalance(referrer.id, referrerNewBalance, client);
-        
-        // Create referral bonus transaction
-        await createReferralBonusTransaction(referrer.id, commission, user.id, investment.id, client);
-        
-        console.log(`[createVipInvestment] Referral commission credited: ₦${commission} to user ${referrer.id} for referral of user ${user.id}`);
-      }
+    // --- NEW: TRIGGER 5-3-2 MLM COMMISSION ---
+    try {
+        await distributeInvestmentCommissions(user.id, Number(vip.price));
+        console.log(`[MLM] Distributed VIP commissions for Investment ${investment.id}`);
+    } catch (commError) {
+        console.error(`[MLM Error] Failed to distribute VIP commissions: ${commError.message}`);
     }
+    // ------------------------------------------
 
     await client.query('COMMIT');
     return investment;
@@ -132,13 +124,19 @@ export const createVipInvestment = async (userId, vipId) => {
 };
 
 
-
 // This runs daily to add each user's dailyEarning to their balance.
 export const processDailyEarnings = async () => {
   const investments = await getAllInvestments(); 
 
   for (const investment of investments) {
-    const { id, user_id, daily_earning, total_earning } = investment;
+    const { id, user_id, daily_earning, total_earning, status } = investment; // Ensure 'status' is fetched
+
+    // --- NEW: STOP EARNING IF EXPIRED ---
+    // If the scheduler marked it as 'completed', skip payment.
+    if (status && status !== 'active') {
+        continue;
+    }
+    // ------------------------------------
 
     const user = await findUserById(user_id);
     if (!user) {
@@ -180,7 +178,10 @@ export const getUserInvestments = async (userId) => {
     const dailyIncome = Number(investment.daily_earning) || 0;
     
     totalInvestmentAmount += investmentAmount;
-    totalDailyIncome += dailyIncome;
+    // Only count daily income if active
+    if (investment.status === 'active' || !investment.status) {
+        totalDailyIncome += dailyIncome;
+    }
 
     return {
       id: investment.id,
@@ -190,7 +191,8 @@ export const getUserInvestments = async (userId) => {
       investmentAmount: investmentAmount,
       dailyIncome: dailyIncome,
       totalEarning: Number(investment.total_earning) || 0,
-      createdAt: investment.created_at
+      createdAt: investment.created_at,
+      status: investment.status || 'active' // Return status to frontend
     };
   });
 
@@ -225,7 +227,10 @@ export const getUserEarningsSummary = async (userId) => {
       const dailyEarning = Number(investment.daily_earning) || 0;
       const totalEarning = Number(investment.total_earning) || 0;
       
-      if (investmentDate <= today) {
+      // Note: This estimation assumes earnings happen regardless of status for past calculations
+      // Ideally, we should query the transaction table for exact historical earnings
+      
+      if (investmentDate <= today && (investment.status === 'active' || !investment.status)) {
         todayEarnings += dailyEarning;
       }
       
@@ -318,21 +323,24 @@ export const getRewardHistory = async (userId) => {
     console.log(`[getRewardHistory] Found ${referralResult.rows.length} referral bonus transactions`);
     
     // Get referred user names from reference pattern REF-{userId}-{investmentId}-{timestamp}
+    // Updated Logic: We now check 'description' field too because the new MLM logic saves descriptions like "Level 1 Commission..."
     const referralRewards = referralResult.rows.map(row => {
-      const match = row.reference.match(/REF-(\d+)-/);
+      // Try to parse from reference first (Legacy)
+      const match = row.reference ? row.reference.match(/REF-(\d+)-/) : null;
       const referredUserId = match ? parseInt(match[1]) : null;
+      
       return {
         id: `ref_${row.id}`,
         date: row.date,
         amount: parseFloat(row.amount || 0),
         source: `Referral Bonus`,
         type: 'referral_bonus',
-        description: `Referral commission`,
+        description: row.description || `Referral commission`, // Use stored description if available
         referred_user_id: referredUserId
       };
     });
     
-    // Fetch referred user names if needed
+    // Fetch referred user names if needed (Legacy Support)
     const referredUserIds = referralRewards.map(r => r.referred_user_id).filter(id => id !== null);
     if (referredUserIds.length > 0) {
       const userQuery = `SELECT id, full_name FROM users WHERE id = ANY($1::int[])`;
@@ -343,7 +351,9 @@ export const getRewardHistory = async (userId) => {
       referralRewards.forEach(r => {
         if (r.referred_user_id && userMap[r.referred_user_id]) {
           r.source = `Referral: ${userMap[r.referred_user_id]}`;
-          r.description = `Referral commission from ${userMap[r.referred_user_id]}`;
+          if (!r.description || r.description === 'Referral commission') {
+             r.description = `Referral commission from ${userMap[r.referred_user_id]}`;
+          }
         }
       });
     }
@@ -374,5 +384,3 @@ export const getRewardHistory = async (userId) => {
     throw new Error(`Failed to fetch reward history: ${error.message}`);
   }
 };
-
-
