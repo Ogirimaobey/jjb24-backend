@@ -8,7 +8,8 @@ import { insertUser, findUserByPhone,
   updateUserVerification, updateUserBalance, findUserEmailByUserId,
   getReferredUsers, getTotalReferralCommission,
   createTransaction, // Receipt Printer
-  getUplineChain // <--- NEW: Required for 5-3-2 MLM Logic
+  getUplineChain, // MLM Logic
+  setUserPin, getUserPin, getActiveInvestments // <--- NEW IMPORTS FOR PIN & DASHBOARD
  } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
@@ -261,7 +262,54 @@ export const distributeInvestmentCommissions = async (investorId, investmentAmou
   
   return { success: true, message: "Commissions distributed" };
 };
-// ------------------------------------------------------------
+
+// --- NEW: CREATE OR UPDATE WITHDRAWAL PIN ---
+export const setWithdrawalPin = async (userId, rawPin) => {
+  if (!/^\d{4}$/.test(rawPin)) throw new Error("PIN must be exactly 4 digits");
+  const hashedPin = await hashPassword(rawPin);
+  await setUserPin(userId, hashedPin);
+  return { success: true, message: "Transaction PIN set successfully." };
+};
+
+// --- NEW: VERIFY PIN DURING WITHDRAWAL ---
+export const verifyWithdrawalPin = async (userId, rawPin) => {
+  const storedHash = await getUserPin(userId);
+  if (!storedHash) throw new Error("Please set a withdrawal PIN first.");
+  
+  const isMatch = await comparePasswords(rawPin, storedHash);
+  if (!isMatch) throw new Error("Incorrect Transaction PIN.");
+  return true;
+};
+
+// --- NEW: GET DASHBOARD DATA (Includes Active Investments & Days Left) ---
+export const getUserDashboardData = async (userId) => {
+  const balanceData = await getUserBalance(userId);
+  
+  // Get active investments to calculate expiration
+  const activeInvestments = await getActiveInvestments(userId);
+  
+  const investmentsWithTimer = activeInvestments.map(inv => {
+    const startDate = new Date(inv.created_at);
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + inv.duration);
+    
+    const now = new Date();
+    const timeDiff = endDate - now;
+    const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+    return {
+      ...inv,
+      days_left: daysLeft > 0 ? daysLeft : 0,
+      status: daysLeft > 0 ? 'active' : 'expired'
+    };
+  });
+
+  return {
+    balance: balanceData.balance,
+    full_name: balanceData.full_name,
+    active_investments: investmentsWithTimer
+  };
+};
 
 //Edit user email
 export const editUserEmail = async (userId, newEmail) => {
