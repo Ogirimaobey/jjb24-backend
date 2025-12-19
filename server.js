@@ -10,10 +10,11 @@ import cors from "cors";
 import cron from 'node-cron';
 import { processDailyEarnings } from './src/service/investmentService.js';
 import { permanentAdmin } from "./seedAdmin.js";
-import pool from './src/config/database.js'; // Needed for the Magic Fix
+import pool from './src/config/database.js';
 
-// Import the auto-setup (It runs in the background, but we also have the manual fix below)
-import './createTable.js'; 
+// --- 1. AUTO-SETUP & SCHEDULER ---
+import './createTable.js';      // Runs database checks
+import './src/scheduler.js';    // <--- NEW: Starts the Expiration Engine & PIN Logic
 
 dotenv.config();
 
@@ -22,14 +23,15 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(cors({ origin: true, credentials: true }));
 
+// --- 2. ROUTES ---
 app.use('/api/users', userRoutes);
 app.use('/api/payment', transactionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/investments', investmentRoute);
 
-// --- 🚨 THE MAGIC REPAIR BUTTON 🚨 ---
-// Visit this URL in your browser: https://jjb24-backend.onrender.com/fix-vip-table
+// --- 3. REPAIR UTILITIES ---
+// (Keep this just in case you ever need to fix the tables again)
 app.get('/fix-vip-table', async (req, res) => {
     try {
         const client = await pool.connect();
@@ -83,14 +85,16 @@ app.get('/fix-vip-table', async (req, res) => {
         res.send(`<h1 style="color:red">❌ ERROR: ${error.message}</h1><pre>${JSON.stringify(error, null, 2)}</pre>`);
     }
 });
-// ------------------------------------------
 
+// --- 4. DAILY EARNINGS PAYOUT ---
+// This runs parallel to your new scheduler
 cron.schedule('0 0 * * *', async () => {
+  console.log('[Cron] Processing Daily Earnings...');
   await processDailyEarnings();
 });
 
 const startServer = async () => {
-  await permanentAdmin();   
+  await permanentAdmin();    
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
