@@ -34,7 +34,7 @@ export const updateUserBalance = async (userId, newBalance, client = null) => {
   }
 };
 
-// --- NEW FUNCTION: CREATE RECEIPT (Fixes the Commission Display Issue) ---
+// --- TRANSACTION RECEIPT PRINTER ---
 export const createTransaction = async ({ userId, amount, type, status = 'success', description = '' }) => {
   const query = `
     INSERT INTO transactions (user_id, amount, type, status, description, created_at)
@@ -44,7 +44,33 @@ export const createTransaction = async ({ userId, amount, type, status = 'succes
   const { rows } = await pool.query(query, [userId, amount, type, status, description]);
   return rows[0];
 };
-// -----------------------------------------------------------------------
+
+// --- NEW: MLM LOGIC - FIND 3 LEVELS OF UPLINES ---
+export const getUplineChain = async (userId) => {
+  const client = await pool.connect();
+  try {
+    const uplines = [];
+    let currentUserId = userId;
+
+    // Loop 3 times to find Level 1, 2, and 3
+    for (let i = 0; i < 3; i++) {
+      const query = `SELECT referrer_id FROM users WHERE id = $1`;
+      const { rows } = await client.query(query, [currentUserId]);
+      
+      if (rows.length > 0 && rows[0].referrer_id) {
+        const referrerId = rows[0].referrer_id;
+        uplines.push(referrerId); // Add to list
+        currentUserId = referrerId; // Move up to the next level
+      } else {
+        break; // Stop if no referrer exists
+      }
+    }
+    return uplines; // Returns array like [Level1_ID, Level2_ID, Level3_ID]
+  } finally {
+    client.release();
+  }
+};
+// --------------------------------------------------
 
 export const findUserById = async (userId) => {
   const query = `SELECT * FROM users WHERE id = $1`;
@@ -97,9 +123,8 @@ export const getRecentUsers = async (limit = 10) => {
   return rows;
 };
 
-// 5. FIXED: Team & Commission Logic
+// 5. Team & Commission Logic
 export const getReferredUsers = async (userId) => {
-  // Added COALESCE to prevent empty names/phones from breaking the frontend
   const query = `
     SELECT id, 
            COALESCE(full_name, 'User') as full_name, 
@@ -113,7 +138,6 @@ export const getReferredUsers = async (userId) => {
   return rows;
 };
 
-// FIXED: Calculates commission from TRANSACTIONS (Receipts) instead of Investments
 export const getTotalReferralCommission = async (userId) => {
   const query = `
     SELECT COALESCE(SUM(amount), 0) as total_commission
@@ -121,7 +145,6 @@ export const getTotalReferralCommission = async (userId) => {
     WHERE user_id = $1 AND type = 'referral_bonus' AND status = 'success'
   `;
   const { rows } = await pool.query(query, [userId]);
-  // Return the raw sum (because transactions already hold the ₦100 amounts)
   return parseFloat(rows[0].total_commission || 0);
 };
 
