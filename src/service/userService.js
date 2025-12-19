@@ -7,7 +7,8 @@ import { insertUser, findUserByPhone,
   findUserByReferralCode, incrementReferralCount, updateUserEmail,
   updateUserVerification, updateUserBalance, findUserEmailByUserId,
   getReferredUsers, getTotalReferralCommission,
-  createTransaction // <--- ADDED THIS IMPORT (Critical for Receipt Printing)
+  createTransaction, // Receipt Printer
+  getUplineChain // <--- NEW: Required for 5-3-2 MLM Logic
  } from '../repositories/userRepository.js';
 import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
 
@@ -215,6 +216,52 @@ export const verifyUserOtp = async (email, otp) => {
     newBalance,
   };
 };
+
+// --- NEW FUNCTION: 5-3-2 MLM INVESTMENT COMMISSION ENGINE ---
+// This function must be called inside the Investment Controller when a user invests.
+export const distributeInvestmentCommissions = async (investorId, investmentAmount) => {
+  console.log(`[MLM] Processing commissions for investment of ₦${investmentAmount} by User ${investorId}`);
+  
+  // 1. Get the upline chain (up to 3 levels)
+  const uplines = await getUplineChain(investorId); // Returns [Level1, Level2, Level3]
+  
+  // 2. Define Percentages: Level 1 (5%), Level 2 (3%), Level 3 (2%)
+  const percentages = [0.05, 0.03, 0.02];
+
+  // 3. Loop through uplines and pay them
+  for (let i = 0; i < uplines.length; i++) {
+    const referrerId = uplines[i];
+    const percentage = percentages[i];
+    const commissionAmount = investmentAmount * percentage;
+
+    if (commissionAmount > 0) {
+      try {
+        const referrer = await findUserById(referrerId);
+        if (referrer) {
+          // A. Add Money to Wallet
+          const newBalance = Number(referrer.balance) + commissionAmount;
+          await updateUserBalance(referrer.id, newBalance);
+
+          // B. Print Receipt (Transaction Record)
+          await createTransaction({
+            userId: referrer.id,
+            amount: commissionAmount,
+            type: 'referral_bonus', // Keep type consistent so it shows on Team Page
+            description: `Level ${i + 1} Commission (${percentage * 100}%) from investment by User ${investorId}`,
+            status: 'success'
+          });
+
+          console.log(`[MLM] Paid Level ${i + 1} commission: ₦${commissionAmount} to User ${referrer.id}`);
+        }
+      } catch (err) {
+        console.error(`[MLM Error] Failed to pay Level ${i + 1} upline:`, err.message);
+      }
+    }
+  }
+  
+  return { success: true, message: "Commissions distributed" };
+};
+// ------------------------------------------------------------
 
 //Edit user email
 export const editUserEmail = async (userId, newEmail) => {
