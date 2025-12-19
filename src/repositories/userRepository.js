@@ -1,10 +1,10 @@
 import pool from '../config/database.js';
 
-// 1. FIXED: Added referrer_id to the insert logic (10 values total)
+// 1. Insert User (Standard)
 export const insertUser = async ({ fullName, phone, email, password, referralCode, referrerId, ownReferralCode, isAdmin = false, otpCode, otpExpiresAt}) => {
   const q = `INSERT INTO users (full_name, phone_number, email, password_hash, referral_code_used, referrer_id, own_referral_code, is_admin, otp_code, otp_expires_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *;`;
-  
+   
   const vals = [fullName, phone, email || null, password, referralCode || null, referrerId || null, ownReferralCode || null, isAdmin, otpCode, otpExpiresAt];
   const { rows } = await pool.query(q, vals);
   return rows[0];
@@ -33,6 +33,18 @@ export const updateUserBalance = async (userId, newBalance, client = null) => {
     throw err;
   }
 };
+
+// --- NEW FUNCTION: CREATE RECEIPT (Fixes the Commission Display Issue) ---
+export const createTransaction = async ({ userId, amount, type, status = 'success', description = '' }) => {
+  const query = `
+    INSERT INTO transactions (user_id, amount, type, status, description, created_at)
+    VALUES ($1, $2, $3, $4, $5, NOW())
+    RETURNING *;
+  `;
+  const { rows } = await pool.query(query, [userId, amount, type, status, description]);
+  return rows[0];
+};
+// -----------------------------------------------------------------------
 
 export const findUserById = async (userId) => {
   const query = `SELECT * FROM users WHERE id = $1`;
@@ -67,7 +79,7 @@ export const updateUserVerification = async (email, verified) => {
   await pool.query(`UPDATE users SET is_verified = $1, otp_code = NULL, otp_expires_at = NULL WHERE email = $2`, [verified, email]);
 };
 
-// 4. Admin/Metrics (This is the 50+ lines I restored)
+// 4. Admin/Metrics
 export const getAllUsers = async () => {
   const query = `SELECT id, full_name, phone_number, email, is_admin, balance, created_at FROM users ORDER BY created_at DESC`;
   const { rows } = await pool.query(query);
@@ -85,10 +97,14 @@ export const getRecentUsers = async (limit = 10) => {
   return rows;
 };
 
-// 5. FIXED: Team & Commission Logic (Now using Referrer ID)
+// 5. FIXED: Team & Commission Logic
 export const getReferredUsers = async (userId) => {
+  // Added COALESCE to prevent empty names/phones from breaking the frontend
   const query = `
-    SELECT id, full_name, phone_number, email, created_at, balance
+    SELECT id, 
+           COALESCE(full_name, 'User') as full_name, 
+           COALESCE(phone_number, 'N/A') as phone_number, 
+           email, created_at, balance
     FROM users 
     WHERE referrer_id = $1
     ORDER BY created_at DESC
@@ -97,17 +113,19 @@ export const getReferredUsers = async (userId) => {
   return rows;
 };
 
+// FIXED: Calculates commission from TRANSACTIONS (Receipts) instead of Investments
 export const getTotalReferralCommission = async (userId) => {
-  const referredUsers = await getReferredUsers(userId);
-  if (referredUsers.length === 0) return 0;
-  const userIds = referredUsers.map(u => u.id);
-  const query = `SELECT COALESCE(SUM(total_earning), 0) as total_commission FROM investments WHERE user_id = ANY($1::int[])`;
-  const { rows } = await pool.query(query, [userIds]);
-  const totalEarnings = parseFloat(rows[0].total_commission || 0);
-  return totalEarnings * 0.05;
+  const query = `
+    SELECT COALESCE(SUM(amount), 0) as total_commission
+    FROM transactions
+    WHERE user_id = $1 AND type = 'referral_bonus' AND status = 'success'
+  `;
+  const { rows } = await pool.query(query, [userId]);
+  // Return the raw sum (because transactions already hold the ₦100 amounts)
+  return parseFloat(rows[0].total_commission || 0);
 };
 
-// 6. Admin User Management (RESTORED)
+// 6. Admin User Management
 export const deleteUserById = async (userId) => {
   const query = `DELETE FROM users WHERE id = $1`;
   const result = await pool.query(query, [userId]);
