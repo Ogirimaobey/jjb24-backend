@@ -1,6 +1,16 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { registerUser, loginUser, getUserBalance, editUserEmail, verifyUserOtp, getUserProfile, getUserReferralData} from '../service/userService.js';
+import { 
+  registerUser, 
+  loginUser, 
+  getUserBalance, 
+  editUserEmail, 
+  verifyUserOtp, 
+  getUserProfile, 
+  getUserReferralData,
+  setWithdrawalPin, // <--- NEW: Import PIN function
+  getUserDashboardData // <--- NEW: Import Dashboard function
+} from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
 import { getUserEarningsSummary, getRewardHistory } from '../service/investmentService.js';
@@ -39,7 +49,7 @@ router.post('/login', async (req, res) => {
 // User logout
 router.post('/logout', (req, res) => {
   res.clearCookie('authToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Strict' });
-  res.status.apply(200).json({ success: true });
+  res.status(200).json({ success: true });
 });
 
 
@@ -54,15 +64,38 @@ router.get("/balance", verifyToken, async (req, res) => {
   }
 });
 
+// --- NEW: SET WITHDRAWAL PIN ---
+router.post('/set-pin', verifyToken, async (req, res) => {
+  try {
+    const { pin } = req.body;
+    // req.user.id comes from the verifyToken middleware
+    const result = await setWithdrawalPin(req.user.id, pin);
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// --- NEW: GET DASHBOARD DATA (Balance + Active Investments with Days Left) ---
+router.get('/dashboard', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const dashboardData = await getUserDashboardData(userId);
+    res.status(200).json({ success: true, ...dashboardData });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 
 // Verify User OTP
 router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
     const result = await verifyUserOtp(email, otp);
-    res.status(200).json(result.message, result.newBalance);
+    res.status(200).json(result); // Fixed: json() takes one object, not two args
   } catch (err) {
-    res.status(400).json( err.message );
+    res.status(400).json({ message: err.message });
   }
 });
 
@@ -140,7 +173,6 @@ router.get('/referrals', verifyToken, async (req, res) => {
     const userId = req.user.id;
     console.log(`[GET /api/users/referrals] User ID: ${userId}`);
     const referralData = await getUserReferralData(userId);
-    console.log(`[GET /api/users/referrals] Response:`, JSON.stringify(referralData, null, 2));
     res.status(200).json({ success: true, ...referralData });
   } catch (error) {
     console.error('[GET /api/users/referrals] Error fetching referral data:', error);
@@ -166,11 +198,6 @@ router.get('/reward-history', verifyToken, async (req, res) => {
     const userId = req.user.id;
     console.log(`[GET /api/users/reward-history] User ID: ${userId}`);
     const rewardHistory = await getRewardHistory(userId);
-    console.log(`[GET /api/users/reward-history] Response summary:`, {
-      total_count: rewardHistory.summary?.total_count,
-      total_rewards: rewardHistory.summary?.total_rewards,
-      rewards_length: rewardHistory.rewards?.length
-    });
     res.status(200).json({ success: true, ...rewardHistory });
   } catch (error) {
     console.error('[GET /api/users/reward-history] Error fetching reward history:', error);
