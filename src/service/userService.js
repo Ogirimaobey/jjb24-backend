@@ -1,74 +1,32 @@
-import pool from '../config/database.js';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import { insertUser, findUserByPhone, 
-  findUserByEmail, findUserById, 
-  findUserByReferralCode, incrementReferralCount, updateUserEmail,
-  updateUserVerification, updateUserBalance, findUserEmailByUserId,
-  getReferredUsers, getTotalReferralCommission,
-  createTransaction, // Receipt Printer
-  getUplineChain, // MLM Logic
-  setUserPin, getUserPin, getActiveInvestments // <--- NEW IMPORTS FOR PIN & DASHBOARD
- } from '../repositories/userRepository.js';
-import { hashPassword, comparePasswords } from '../utils/harshpassword.js';
+import pool from '../config/database.js';
+import { 
+  findUserByEmail, 
+  findUserByPhone, 
+  updateUserBalance, 
+  findUserById,
+  findUserByReferralCode,
+  updateUserVerification,
+  setUserPin, 
+  getUserPin
+} from '../repositories/userRepository.js';
+import { 
+  createTransaction, 
+  createReferralBonusTransaction 
+} from '../repositories/transactionRepository.js';
+import { getAllInvestmentsByUserId } from '../repositories/investmentRepository.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error('JWT_SECRET is not defined in environment variables');
 
-// Register a new user
-export const registerUser = async (data) => {
-  const { fullName, phone, email, password, referralCode } = data;
-
-  const existingUserNumber = await findUserByPhone(phone);
-  const existingUserEmail = email ? await findUserByEmail(email) : null;
-
-  if (existingUserEmail) throw new Error('User with this email already exists.');
-  if (existingUserNumber) throw new Error('User with this phone number already exists.');
-
-  // FIX: Find the actual ID of the referrer to link them in the DB permanently
-  let referrerId = null;
-  if (referralCode) {
-  const referrer = await findUserByReferralCode(referralCode);
-
-  if (!referrer) throw new Error("Invalid referral code.");
-    referrerId = referrer.id; // Store ID to create the permanent link
-  await incrementReferralCount(referrer.id);
-  }
-
-  const passwordHash = await hashPassword(password);
-  const ownReferralCode = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-
-  const otp = crypto.randomInt(100000, 999999).toString();
-  const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
-
-  try {
-  await sendOtpEmail(email, otp);
-
-    // Pass the referrerId so the repository can save it to the referrer_id column
-   await insertUser({
-    fullName,
-    phone,
-    email,
-    password: passwordHash,
-      referralCode, // String code typed by user
-      referrerId,   // Numeric ID for database link
-    ownReferralCode,
-    otpCode: otp,
-    otpExpiresAt:otpExpires,
-  });
-
-  return {
-    message: "User registered successfully. Check your email for OTP.",
-    email,
-  };
-} catch (err) {
-  console.error("Error sending OTP:", err.message);
-  throw new Error("Failed to send verification email. Please try again.");
-}
+// --- HELPER: Generate Unique Referral Code ---
+const generateReferralCode = () => {
+  return `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 };
 
-// Helper function to send OTP email
+// --- HELPER: Send OTP Email ---
 const sendOtpEmail = async (to, otp) => {
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
@@ -88,310 +46,311 @@ const sendOtpEmail = async (to, otp) => {
   });
 };
 
-// Login user and return JWT token
-export const loginUser = async (data) => {
-  const { phone, email, password } = data;
+// --- REGISTER USER (FIXED: Force Save Referrer ID + Send Email) ---
+export const registerUser = async (data) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if ((!phone && !email) || !password) {
-    throw new Error('Please provide either phone or email, and password.');
+    const { fullName, phone, email, password, referralCode } = data;
+
+    // 1. Check duplicates
+    const existingEmail = await findUserByEmail(email);
+    if (existingEmail) throw new Error('Email already registered');
+    
+    const existingPhone = await findUserByPhone(phone);
+    if (existingPhone) throw new Error('Phone number already registered');
+
+    // 2. Resolve Referral (The Fix for Team Page)
+    let referrerId = null;
+    if (referralCode && referralCode.trim() !== "") {
+      const referrer = await findUserByReferralCode(referralCode);
+      if (referrer) {
+        referrerId = referrer.id;
+        console.log(`[Register] User linked to referrer: ${referrer.full_name} (ID: ${referrer.id})`);
+        
+        // Increment referrer count
+        await client.query('UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE id = $1', [referrerId]);
+      }
+    }
+
+    // 3. Security & Codes
+    const passwordHash = await bcrypt.hash(password, 10);
+    const ownCode = generateReferralCode();
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    // 4. Send Email
+    try {
+      await sendOtpEmail(email, otp);
+    } catch (emailErr) {
+      console.error("Failed to send email, but proceeding with registration:", emailErr);
+    }
+
+    // 5. Insert User (Direct SQL to ensure Linkage)
+    const queryText = `
+      INSERT INTO users (full_name, email, phone_number, password_hash, balance, referrer_id, own_referral_code, referral_count, otp_code, otp_expires_at, is_verified)
+      VALUES ($1, $2, $3, $4, 0, $5, $6, 0, $7, $8, FALSE)
+      RETURNING *;
+    `;
+    const { rows } = await client.query(queryText, [fullName, email, phone, passwordHash, referrerId, ownCode, otp, otpExpires]);
+    const newUser = rows[0];
+
+    await client.query('COMMIT');
+    
+    return {
+      message: "User registered successfully. Check your email for OTP.",
+      email,
+      userId: newUser.id
+    };
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-
-  let user = null;
-  if (phone) {
-    user = await findUserByPhone(phone);
-  } else if (email) {
-    user = await findUserByEmail(email);
-  }
-
-  if (!user) {
-    throw new Error('Invalid credentials. User not found.');
-  }
-
-  const isPasswordCorrect = await comparePasswords(password, user.password_hash);
-  if (!isPasswordCorrect) {
-    throw new Error('Invalid credentials. Wrong password.');
-  }
-
-  const token = jwt.sign(
-    { id: user.id, phone: user.phone_number, email: user.email, is_admin: user.is_admin },
-    JWT_SECRET,
-    { expiresIn: '1d' }
-  );
-
-  return {
-    message: 'Login successful',
-    token,
-    user: {
-      id: user.id,
-      full_name: user.full_name,
-      phone_number: user.phone_number,
-      email: user.email,
-      is_admin: user.is_admin,
-    },
-  };
 };
 
-// Get User Wallet Balance (FIXED & SELF-HEALING)
-export const getUserBalance = async (userId) => {
-  const user = await findUserById(userId);
-
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  // Self-Heal: Generate code if missing
-  if (!user.own_referral_code) {
-    const newCode = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    await pool.query("UPDATE users SET own_referral_code = $1 WHERE id = $2", [newCode, userId]);
-    user.own_referral_code = newCode;
-  }
-
-  return {
-    full_name: user.full_name,
-    balance: user.balance || 0.0,
-    phone_number: user.phone_number,
-    own_referral_code: user.own_referral_code 
-  };
-};
-
-// Verify User OTP (UPDATED: Hybrid Model ₦200 for User, ₦100 for Referrer + RECEIPTS)
+// --- VERIFY OTP (Preserves ₦100 Referrer Bonus) ---
 export const verifyUserOtp = async (email, otp) => {
   const user = await findUserByEmail(email);
   if (!user) throw new Error("User not found");
 
-  if (user.is_verified) return "User already verified";
+  if (user.is_verified) return { success: true, message: "User already verified" };
   if (!user.otp_code || user.otp_code !== otp) throw new Error("Invalid OTP");
+  if (new Date() > new Date(user.otp_expires_at)) throw new Error("OTP expired");
 
-  if (new Date() > user.otp_expires_at) throw new Error("OTP expired");
-
-  // 1. Mark User as Verified
+  // 1. Mark Verified
   await updateUserVerification(email, true);
 
-  // 2. Pay the New User (Referee) - ₦200
+  // 2. Pay Referee (New User) - ₦200
   const welcomeBonus = 200.0;
   const newBalance = Number(user.balance) + welcomeBonus;
   await updateUserBalance(user.id, newBalance);
   
-  // --- CREATE RECEIPT FOR NEW USER ---
-  await createTransaction({
-      userId: user.id,
-      amount: welcomeBonus,
-      type: 'welcome_bonus',
-      description: 'Registration Bonus',
-      status: 'success'
-  });
-  
-  console.log(`[Bonus] User ${user.id} verified. Earned ₦${welcomeBonus}`);
+  await createTransaction(
+      user.id, 
+      welcomeBonus, 
+      `WEL-${user.id}`, 
+      'welcome_bonus'
+  );
 
-  // 3. Pay the Referrer - ₦100 (If they exist)
+  // 3. Pay Referrer - ₦100
   if (user.referrer_id) {
     try {
       const referrer = await findUserById(user.referrer_id);
       if (referrer) {
-        const referralBonus = 100.0; // The Instant ₦100 Reward
+        const referralBonus = 100.0;
         const referrerNewBalance = Number(referrer.balance) + referralBonus;
         
-        // Update Referrer Balance
         await updateUserBalance(referrer.id, referrerNewBalance);
 
-        // --- CREATE RECEIPT FOR REFERRER (Fixes the 0 Commission Display) ---
-        await createTransaction({
-            userId: referrer.id,
-            amount: referralBonus,
-            type: 'referral_bonus',
-            description: `Referral Bonus for ${user.full_name}`,
-            status: 'success'
-        });
-        
-        console.log(`[Bonus] Referrer ${referrer.id} earned ₦${referralBonus} for inviting User ${user.id}`);
+        // Receipt for Referrer
+        await createTransaction(
+            referrer.id,
+            referralBonus,
+            `REF-BONUS-${user.id}`,
+            'referral_bonus'
+        );
+        console.log(`[Bonus] Paid ₦100 to Referrer ${referrer.id}`);
       }
     } catch (err) {
       console.error("[Bonus Error] Failed to pay referrer:", err.message);
-      // We do not fail the verification just because the referrer bonus failed
     }
   }
 
   return {
     success: true,
-    message: `OTP verified successfully! ₦${welcomeBonus} bonus added to your wallet.`,
+    message: `OTP verified! ₦${welcomeBonus} bonus added.`,
     newBalance,
   };
 };
 
-// --- NEW FUNCTION: 5-3-2 MLM INVESTMENT COMMISSION ENGINE ---
-// This function must be called inside the Investment Controller when a user invests.
-export const distributeInvestmentCommissions = async (investorId, investmentAmount) => {
-  console.log(`[MLM] Processing commissions for investment of ₦${investmentAmount} by User ${investorId}`);
+// --- LOGIN USER ---
+export const loginUser = async ({ email, phone, password }) => {
+  let user;
+  if (email) user = await findUserByEmail(email);
+  else if (phone) user = await findUserByPhone(phone);
+
+  if (!user) throw new Error('Invalid credentials');
+
+  const isMatch = await bcrypt.compare(password, user.password_hash);
+  if (!isMatch) throw new Error('Invalid credentials');
+
+  const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
   
-  // 1. Get the upline chain (up to 3 levels)
-  const uplines = await getUplineChain(investorId); // Returns [Level1, Level2, Level3]
-  
-  // 2. Define Percentages: Level 1 (5%), Level 2 (3%), Level 3 (2%)
-  const percentages = [0.05, 0.03, 0.02];
-
-  // 3. Loop through uplines and pay them
-  for (let i = 0; i < uplines.length; i++) {
-    const referrerId = uplines[i];
-    const percentage = percentages[i];
-    const commissionAmount = investmentAmount * percentage;
-
-    if (commissionAmount > 0) {
-      try {
-        const referrer = await findUserById(referrerId);
-        if (referrer) {
-          // A. Add Money to Wallet
-          const newBalance = Number(referrer.balance) + commissionAmount;
-          await updateUserBalance(referrer.id, newBalance);
-
-          // B. Print Receipt (Transaction Record)
-          await createTransaction({
-            userId: referrer.id,
-            amount: commissionAmount,
-            type: 'referral_bonus', // Keep type consistent so it shows on Team Page
-            description: `Level ${i + 1} Commission (${percentage * 100}%) from investment by User ${investorId}`,
-            status: 'success'
-          });
-
-          console.log(`[MLM] Paid Level ${i + 1} commission: ₦${commissionAmount} to User ${referrer.id}`);
-        }
-      } catch (err) {
-        console.error(`[MLM Error] Failed to pay Level ${i + 1} upline:`, err.message);
-      }
-    }
-  }
-  
-  return { success: true, message: "Commissions distributed" };
+  return { token, user: { id: user.id, name: user.full_name, email: user.email, role: user.role } };
 };
 
-// --- NEW: CREATE OR UPDATE WITHDRAWAL PIN ---
+// --- GET BALANCE ---
+export const getUserBalance = async (userId) => {
+  const user = await findUserById(userId);
+  if (!user) throw new Error('User not found');
+  
+  // Self-Heal: Generate code if missing
+  if (!user.own_referral_code) {
+    const newCode = generateReferralCode();
+    await pool.query("UPDATE users SET own_referral_code = $1 WHERE id = $2", [newCode, userId]);
+    user.own_referral_code = newCode;
+  }
+
+  return { 
+    balance: Number(user.balance), 
+    full_name: user.full_name,
+    own_referral_code: user.own_referral_code,
+    phone_number: user.phone_number
+  };
+};
+
+// --- SET WITHDRAWAL PIN ---
 export const setWithdrawalPin = async (userId, rawPin) => {
   if (!/^\d{4}$/.test(rawPin)) throw new Error("PIN must be exactly 4 digits");
-  const hashedPin = await hashPassword(rawPin);
+  const hashedPin = await bcrypt.hash(rawPin, 10);
   await setUserPin(userId, hashedPin);
-  return { success: true, message: "Transaction PIN set successfully." };
+  return { success: true, message: "Security PIN set successfully" };
 };
 
-// --- NEW: VERIFY PIN DURING WITHDRAWAL ---
+// --- VERIFY WITHDRAWAL PIN ---
 export const verifyWithdrawalPin = async (userId, rawPin) => {
   const storedHash = await getUserPin(userId);
   if (!storedHash) throw new Error("Please set a withdrawal PIN first.");
   
-  const isMatch = await comparePasswords(rawPin, storedHash);
-  if (!isMatch) throw new Error("Incorrect Transaction PIN.");
+  const isMatch = await bcrypt.compare(rawPin, storedHash);
+  if (!isMatch) throw new Error("Incorrect Transaction PIN");
   return true;
 };
 
-// --- NEW: GET DASHBOARD DATA (Includes Active Investments & Days Left) ---
-export const getUserDashboardData = async (userId) => {
-  const balanceData = await getUserBalance(userId);
-  
-  // Get active investments to calculate expiration
-  const activeInvestments = await getActiveInvestments(userId);
-  
-  const investmentsWithTimer = activeInvestments.map(inv => {
-    const startDate = new Date(inv.created_at);
-    const endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + inv.duration);
-    
-    const now = new Date();
-    const timeDiff = endDate - now;
-    const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-
-    return {
-      ...inv,
-      days_left: daysLeft > 0 ? daysLeft : 0,
-      status: daysLeft > 0 ? 'active' : 'expired'
-    };
-  });
-
-  return {
-    balance: balanceData.balance,
-    full_name: balanceData.full_name,
-    active_investments: investmentsWithTimer
-  };
-};
-
-//Edit user email
-export const editUserEmail = async (userId, newEmail) => {
+// --- MLM COMMISSION LOGIC (5% - 3% - 2%) ---
+export const distributeInvestmentCommissions = async (investorId, amount) => {
+  const client = await pool.connect();
   try {
-    const user = await findUserEmailByUserId(userId);
-    if (!user) throw new Error("User not found");
+    // Level 1 (Direct Parent)
+    const userRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [investorId]);
+    const parentId = userRes.rows[0]?.referrer_id;
 
-    if (user.email === newEmail) {
-      throw new Error("New email is the same as the current email");
-    }
+    if (parentId) {
+      // PAY LEVEL 1 (5%)
+      const comm1 = amount * 0.05;
+      await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm1, parentId]);
+      await createReferralBonusTransaction(parentId, comm1, investorId, null, client);
+      console.log(`[MLM] Level 1: Paid ₦${comm1} to User ${parentId}`);
 
-    if(!newEmail.includes("@")){
-      throw new Error("Invalid email! format email must contain '@' symbol");
+      // Level 2 (Grandparent)
+      const parentRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [parentId]);
+      const grandParentId = parentRes.rows[0]?.referrer_id;
+
+      if (grandParentId) {
+        // PAY LEVEL 2 (3%)
+        const comm2 = amount * 0.03;
+        await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm2, grandParentId]);
+        const ref2 = `REF-L2-${grandParentId}-${Date.now()}`;
+        await client.query(
+          `INSERT INTO transactions (user_id, amount, type, reference, status, description) VALUES ($1, $2, 'referral_bonus', $3, 'success', 'Level 2 Commission')`,
+          [grandParentId, comm2, ref2]
+        );
+        console.log(`[MLM] Level 2: Paid ₦${comm2} to User ${grandParentId}`);
+
+        // Level 3 (Great-Grandparent)
+        const grandParentRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [grandParentId]);
+        const greatGrandParentId = grandParentRes.rows[0]?.referrer_id;
+
+        if (greatGrandParentId) {
+          // PAY LEVEL 3 (2%)
+          const comm3 = amount * 0.02;
+          await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm3, greatGrandParentId]);
+          const ref3 = `REF-L3-${greatGrandParentId}-${Date.now()}`;
+          await client.query(
+            `INSERT INTO transactions (user_id, amount, type, reference, status, description) VALUES ($1, $2, 'referral_bonus', $3, 'success', 'Level 3 Commission')`,
+            [greatGrandParentId, comm3, ref3]
+          );
+          console.log(`[MLM] Level 3: Paid ₦${comm3} to User ${greatGrandParentId}`);
+        }
+      }
     }
-    await updateUserEmail(userId, newEmail);
-    return { success: true, message: "Email updated successfully", newEmail: newEmail, oldEmail: user.email};
-  } catch (err) {
-    console.error("Error updating email:", err.message);
-    throw err;
+  } catch (e) {
+    console.error('[MLM Error]', e);
+  } finally {
+    client.release();
   }
 };
 
+// --- GET TEAM DATA (For Team Page) ---
+export const getUserReferralData = async (userId) => {
+  const client = await pool.connect();
+  try {
+    const user = await findUserById(userId);
+    if(!user) throw new Error("User not found");
 
+    // 1. Get total commission earned
+    const commQuery = `
+      SELECT SUM(amount) as total 
+      FROM transactions 
+      WHERE user_id = $1 AND type = 'referral_bonus' AND status = 'success'
+    `;
+    const commRes = await client.query(commQuery, [userId]);
+    const totalCommission = parseFloat(commRes.rows[0].total || 0);
+
+    // 2. Get list of direct referrals (Team)
+    const teamQuery = `
+      SELECT id, full_name as name, created_at as joined_date, balance
+      FROM users 
+      WHERE referrer_id = $1 
+      ORDER BY created_at DESC
+    `;
+    const teamRes = await client.query(teamQuery, [userId]);
+
+    return {
+      total_commission: totalCommission,
+      team_count: teamRes.rows.length,
+      team_list: teamRes.rows
+    };
+  } finally {
+    client.release();
+  }
+};
+
+// --- GET DASHBOARD DATA (For "My Plans" Page) ---
+export const getUserDashboardData = async (userId) => {
+  const investments = await getAllInvestmentsByUserId(userId);
+  
+  // Filter only active investments and calculate days left
+  const activeInvestments = investments.map(inv => {
+    const created = new Date(inv.created_at);
+    const now = new Date();
+    const diffTime = Math.abs(now - created);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    
+    const duration = inv.duration || 30;
+    const daysLeft = Math.max(0, duration - diffDays);
+    
+    let status = inv.status || 'active';
+    if (daysLeft === 0 && status === 'active') status = 'completed';
+
+    return {
+      id: inv.id,
+      itemname: inv.itemName,
+      daily_earning: inv.daily_earning,
+      total_earning: inv.total_earning,
+      price: inv.price,
+      days_left: daysLeft,
+      status: status
+    };
+  }).filter(i => i.status === 'active');
+
+  return { active_investments: activeInvestments };
+};
+
+// --- Edit Email ---
+export const editUserEmail = async (userId, newEmail) => {
+  if (!newEmail.includes("@")) throw new Error("Invalid email");
+  // Simple update, skipping repo for brevity as this is likely simple
+  await pool.query('UPDATE users SET email = $1 WHERE id = $2', [newEmail, userId]);
+  return { success: true };
+};
+
+// --- Get Profile ---
 export const getUserProfile = async (userId) => {
   const user = await findUserById(userId);
-  if (!user) throw new Error("User not found");
-  return {
-    id: user.id,
-    full_name: user.full_name,
-    phone_number: user.phone_number,
-    email: user.email,
-    referral_code: user.own_referral_code
-  };
-};
-
-// Get referral/team data for a user
-export const getUserReferralData = async (userId) => {
-  console.log(`[getUserReferralData] Fetching referral data for user ${userId}`);
-  const user = await findUserById(userId);
-  if (!user) throw new Error("User not found");
-
-  console.log(`[getUserReferralData] User found: ${user.full_name}, Referral code: ${user.own_referral_code}`);
-
-  const referralCode = user.own_referral_code;
-  if (!referralCode) {
-    console.log(`[getUserReferralData] No referral code found for user ${userId}`);
-    return {
-      total_commission: 0,
-      team_count: 0,
-      team_list: []
-    };
-  }
-
-  // Get all referred users using ID link (Much faster and more reliable)
-  const referredUsers = await getReferredUsers(user.id);
-  console.log(`[getUserReferralData] Found ${referredUsers.length} referred users`);
-   
-  // Calculate total commission from transactions table (more accurate than calculating from investments)
-  // This pulls actual commission transactions instead of calculating from investment totals
-  const commissionQuery = `
-    SELECT COALESCE(SUM(amount), 0) as total_commission
-    FROM transactions
-    WHERE user_id = $1 AND type = 'referral_bonus' AND status = 'success'
-  `;
-  const { rows: commissionRows } = await pool.query(commissionQuery, [userId]);
-  const totalCommission = parseFloat(commissionRows[0]?.total_commission || 0);
-  console.log(`[getUserReferralData] Total commission from transactions: ₦${totalCommission}`);
-
-  // Format team list exactly as Sahil defined
-  const teamList = referredUsers.map(u => ({
-    name: u.full_name,
-    phone: u.phone_number,
-    email: u.email || 'N/A',
-    joined_date: u.created_at,
-    balance: parseFloat(u.balance || 0)
-  }));
-
-  console.log(`[getUserReferralData] Returning data: team_count=${referredUsers.length}, total_commission=₦${totalCommission}`);
-
-  return {
-    total_commission: Math.round(totalCommission * 100) / 100, // Round to 2 decimal places
-    team_count: referredUsers.length,
-    team_list: teamList
-  };
+  return user;
 };
