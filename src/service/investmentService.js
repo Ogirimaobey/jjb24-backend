@@ -29,6 +29,8 @@ export const createInvestment = async (userId, itemId) => {
     await updateUserBalance(user.id, newUserBalance, client);
 
     const dailyEarning = item.dailyincome;
+    // --- FIX: Get the duration from the item (or default to 30) ---
+    const duration = item.duration || 30;
 
     const investment = await insertInvestment(
       {
@@ -36,7 +38,8 @@ export const createInvestment = async (userId, itemId) => {
         itemId: item.id,              
         casperVipId: null,        
         dailyEarning: dailyEarning,
-        totalEarning: 0
+        totalEarning: 0,
+        duration: duration // <--- PASSING DURATION HERE
       },
       client
     );
@@ -45,15 +48,11 @@ export const createInvestment = async (userId, itemId) => {
     await createInvestmentTransaction(user.id, item.price, investment.id, client);
 
     // --- NEW: TRIGGER 5-3-2 MLM COMMISSION ---
-    // This replaces the old single-level 5% logic.
-    // We do this AFTER the transaction is recorded but BEFORE committing.
     try {
         await distributeInvestmentCommissions(user.id, Number(item.price));
         console.log(`[MLM] Distributed commissions for Investment ${investment.id}`);
     } catch (commError) {
         console.error(`[MLM Error] Failed to distribute commissions: ${commError.message}`);
-        // We do NOT rollback here because the investment itself was successful.
-        // Commissions can be fixed manually if this fails, but we don't want to kill the user's purchase.
     }
     // ------------------------------------------
 
@@ -89,13 +88,17 @@ export const createVipInvestment = async (userId, vipId) => {
     await updateUserBalance(user.id, newUserBalance, client);
 
     const dailyEarning = vip.daily_earnings;
+    // --- FIX: Get duration for VIP (Default to 30 if not set) ---
+    const duration = vip.duration || 30;
+
     const investment = await insertInvestment(
       {
         userId,
         itemId: null,              
         casperVipId: vip.id,        
         dailyEarning: dailyEarning,
-        totalEarning: 0
+        totalEarning: 0,
+        duration: duration // <--- PASSING DURATION HERE
       },
       client
     );
