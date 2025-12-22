@@ -8,8 +8,9 @@ import {
   verifyUserOtp, 
   getUserProfile, 
   getUserReferralData,
-  setWithdrawalPin, // <--- NEW: Import PIN function
-  getUserDashboardData // <--- NEW: Import Dashboard function
+  setWithdrawalPin, 
+  getUserDashboardData,
+  adminFundUser // <--- NEW: Imported the funding function
 } from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
@@ -33,12 +34,12 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { token, user } = await loginUser(req.body);
-  res.cookie('authToken', token, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'None',
-    maxAge: 1000 * 60 * 60 * 24 * 7, 
-});
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'None',
+      maxAge: 1000 * 60 * 60 * 24 * 7, 
+    });
     res.json({ success: true, token, user });
   } 
   catch (error) {
@@ -93,7 +94,7 @@ router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
     const result = await verifyUserOtp(email, otp);
-    res.status(200).json(result); // Fixed: json() takes one object, not two args
+    res.status(200).json(result); 
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -201,6 +202,24 @@ router.get('/reward-history', verifyToken, async (req, res) => {
     res.status(200).json({ success: true, ...rewardHistory });
   } catch (error) {
     console.error('[GET /api/users/reward-history] Error fetching reward history:', error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// --- NEW: ADMIN FUND WALLET (Owner Feature) ---
+router.post('/admin/fund', async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+    
+    // Simple validation
+    if (!email || !amount) {
+      return res.status(400).json({ success: false, message: "Email and Amount are required" });
+    }
+
+    const result = await adminFundUser(email, amount);
+    res.status(200).json(result);
+    
+  } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 });
