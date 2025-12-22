@@ -108,7 +108,7 @@ const alterTableTransactions = `
   
   ALTER TABLE transactions
     ADD CONSTRAINT transactions_type_check 
-    CHECK (type IN ('deposit', 'withdrawal', 'investment', 'investment_roi', 'referral_bonus'));
+    CHECK (type IN ('deposit', 'withdrawal', 'investment', 'investment_roi', 'referral_bonus', 'admin_credit'));
 `;
 
 const createItemTable = `
