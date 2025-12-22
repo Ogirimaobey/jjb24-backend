@@ -354,3 +354,26 @@ export const getUserProfile = async (userId) => {
   const user = await findUserById(userId);
   return user;
 };
+
+// --- NEW: ADMIN FUNDING FUNCTION ---
+export const adminFundUser = async (email, amount) => {
+    // 1. Find the user
+    const user = await findUserByEmail(email);
+    if (!user) throw new Error("User email not found");
+
+    // 2. Add Money
+    const newBalance = Number(user.balance) + Number(amount);
+    await updateUserBalance(user.id, newBalance);
+
+    // 3. Create a Receipt (So the owner remembers he sent it)
+    await createTransaction(
+        user.id,
+        amount,
+        `ADMIN-FUND-${Date.now()}`, // Reference
+        'admin_credit',             // Type
+        'success',                  // Status
+        'Funded by Admin'           // Description
+    );
+
+    return { success: true, newBalance };
+};
