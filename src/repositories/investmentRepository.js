@@ -1,17 +1,21 @@
 import pool from '../config/database.js';
 
+// --- FIX 1: ACCEPT DURATION AND SET END_DATE ---
 export const insertInvestment = async (
-  { userId, itemId, casperVipId, dailyEarning, totalEarning },
+  { userId, itemId, casperVipId, dailyEarning, totalEarning, duration }, // Added duration here
   client
 ) => {
+  // If no duration is provided, default to 30 to prevent crashes
+  const safeDuration = duration || 30;
+
   const { rows } = await client.query(
     `
     INSERT INTO investments
-    (user_id, item_id, caspervip_id, daily_earning, total_earning)
-    VALUES ($1, $2, $3, $4, $5)
+    (user_id, item_id, caspervip_id, daily_earning, total_earning, start_date, end_date)
+    VALUES ($1, $2, $3, $4, $5, NOW(), NOW() + ($6 || ' days')::interval)
     RETURNING *;
     `,
-    [userId, itemId, casperVipId, dailyEarning, totalEarning]
+    [userId, itemId, casperVipId, dailyEarning, totalEarning, safeDuration]
   );
 
   return rows[0];
@@ -51,6 +55,7 @@ export const deleteInvestment = async (investmentId) => {
   await pool.query('DELETE FROM investments WHERE id = $1', [investmentId]);
 };
 
+// --- FIX 2: FETCH DURATION SO DASHBOARD SEES IT ---
 // Get all investments for a specific user with item details
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
@@ -61,10 +66,15 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.daily_earning,
       i.total_earning,
       i.created_at,
+      i.start_date,
+      i.end_date,
       it.itemname as "itemName",
       it.price,
       it.dailyincome as "dailyIncome",
-      it.itemimage as "itemImage"
+      it.itemimage as "itemImage",
+      -- Calculate duration dynamically based on the receipt (end - start)
+      -- This ensures that if we extended the date in DB, the user sees the extension.
+      EXTRACT(DAY FROM (i.end_date - i.start_date)) as duration
     FROM investments i
     INNER JOIN items it ON i.item_id = it.id
     WHERE i.user_id = $1
