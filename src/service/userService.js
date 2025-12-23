@@ -383,17 +383,11 @@ export const adminFundUser = async (email, amount) => {
     return { success: true, newBalance };
 };
 
-// --- NEW: GET ALL USERS (FOR ADMIN TABLE) ---
+// --- NEW: GET ALL USERS (UPDATED TO FETCH BALANCE) ---
 export const getAllUsers = async () => {
+    // We use SELECT * to be robust and ensure we get 'balance' and everything else
     const query = `
-      SELECT 
-        id, 
-        full_name, 
-        email, 
-        phone_number, 
-        created_at, 
-        account_status, 
-        is_blocked 
+      SELECT *
       FROM users 
       ORDER BY created_at DESC
     `;
@@ -422,23 +416,25 @@ export const updateUserStatus = async (userId, status, reason) => {
     return { success: true, user: rows[0] };
 };
 
-// --- NEW: ADMIN EDIT USER (Name/Email/Phone) ---
+// --- NEW: ADMIN EDIT USER (Name/Email/Phone AND BALANCE) ---
 export const adminUpdateUser = async (userId, updateData) => {
-    const { full_name, email, phone_number } = updateData;
+    const { full_name, email, phone_number, balance } = updateData;
     
     // We use COALESCE to only update fields that are sent.
-    // If a field is null/undefined, it keeps the old value.
+    // Added balance ($5) to the list
     const query = `
         UPDATE users 
         SET 
             full_name = COALESCE($2, full_name),
             email = COALESCE($3, email),
-            phone_number = COALESCE($4, phone_number)
+            phone_number = COALESCE($4, phone_number),
+            balance = COALESCE($5, balance)
         WHERE id = $1
-        RETURNING id, full_name, email, phone_number;
+        RETURNING id, full_name, email, phone_number, balance;
     `;
     
-    const { rows } = await pool.query(query, [userId, full_name, email, phone_number]);
+    // Pass the new balance to the query
+    const { rows } = await pool.query(query, [userId, full_name, email, phone_number, balance]);
     if (rows.length === 0) throw new Error("User not found");
     
     return { success: true, user: rows[0] };
