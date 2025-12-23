@@ -8,8 +8,8 @@ import {
   findUserByPhone, 
   updateUserBalance, 
   findUserById,
-  findUserByReferralCode,
-  updateUserVerification,
+  findUserByReferralCode, 
+  updateUserVerification, 
   setUserPin, 
   getUserPin
 } from '../repositories/userRepository.js';
@@ -174,6 +174,11 @@ export const loginUser = async ({ email, phone, password }) => {
   else if (phone) user = await findUserByPhone(phone);
 
   if (!user) throw new Error('Invalid credentials');
+
+  // --- CHECK IF BLOCKED ---
+  if (user.is_blocked || user.account_status === 'suspended' || user.account_status === 'blocked') {
+      throw new Error(`Account ${user.account_status || 'blocked'}: ${user.block_reason || 'Contact Support'}`);
+  }
 
   const isMatch = await bcrypt.compare(password, user.password_hash);
   if (!isMatch) throw new Error('Invalid credentials');
@@ -376,4 +381,65 @@ export const adminFundUser = async (email, amount) => {
     );
 
     return { success: true, newBalance };
+};
+
+// --- NEW: GET ALL USERS (FOR ADMIN TABLE) ---
+export const getAllUsers = async () => {
+    const query = `
+      SELECT 
+        id, 
+        full_name, 
+        email, 
+        phone_number, 
+        created_at, 
+        account_status, 
+        is_blocked 
+      FROM users 
+      ORDER BY created_at DESC
+    `;
+    const { rows } = await pool.query(query);
+    return rows;
+};
+
+// --- NEW: BLOCK / SUSPEND USER ---
+export const updateUserStatus = async (userId, status, reason) => {
+    // status can be: 'active', 'suspended', 'blocked'
+    let isBlocked = false;
+    if (status === 'suspended' || status === 'blocked') {
+        isBlocked = true;
+    }
+
+    const query = `
+        UPDATE users 
+        SET account_status = $2, is_blocked = $3, block_reason = $4
+        WHERE id = $1
+        RETURNING id, full_name, account_status, is_blocked;
+    `;
+    
+    const { rows } = await pool.query(query, [userId, status, isBlocked, reason]);
+    if (rows.length === 0) throw new Error("User not found");
+    
+    return { success: true, user: rows[0] };
+};
+
+// --- NEW: ADMIN EDIT USER (Name/Email/Phone) ---
+export const adminUpdateUser = async (userId, updateData) => {
+    const { full_name, email, phone_number } = updateData;
+    
+    // We use COALESCE to only update fields that are sent.
+    // If a field is null/undefined, it keeps the old value.
+    const query = `
+        UPDATE users 
+        SET 
+            full_name = COALESCE($2, full_name),
+            email = COALESCE($3, email),
+            phone_number = COALESCE($4, phone_number)
+        WHERE id = $1
+        RETURNING id, full_name, email, phone_number;
+    `;
+    
+    const { rows } = await pool.query(query, [userId, full_name, email, phone_number]);
+    if (rows.length === 0) throw new Error("User not found");
+    
+    return { success: true, user: rows[0] };
 };
