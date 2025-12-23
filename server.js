@@ -14,14 +14,23 @@ import pool from './src/config/database.js';
 
 // --- 1. AUTO-SETUP & SCHEDULER ---
 import './createTable.js';      // Runs database checks
-import './src/scheduler.js';    // <--- NEW: Starts the Expiration Engine & PIN Logic
+import './src/scheduler.js';    // Starts the Expiration Engine & PIN Logic
 
 dotenv.config();
 
 const app = express();
 app.use(cookieParser());
 app.use(express.json());
-app.use(cors({ origin: true, credentials: true }));
+
+// =====================================================
+// --- THE FIX: ALLOW 'PATCH' (BLOCK) AND 'PUT' (EDIT) ---
+// =====================================================
+app.use(cors({ 
+    origin: true, 
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'], // <--- ADDED THIS LINE
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // --- 2. ROUTES ---
 app.use('/api/users', userRoutes);
@@ -31,7 +40,6 @@ app.use('/api/items', itemRoutes);
 app.use('/api/investments', investmentRoute);
 
 // --- 3. REPAIR UTILITIES ---
-// (Keep this just in case you ever need to fix the tables again)
 app.get('/fix-vip-table', async (req, res) => {
     try {
         const client = await pool.connect();
@@ -87,14 +95,13 @@ app.get('/fix-vip-table', async (req, res) => {
 });
 
 // --- 4. DAILY EARNINGS PAYOUT ---
-// This runs parallel to your new scheduler
 cron.schedule('0 0 * * *', async () => {
   console.log('[Cron] Processing Daily Earnings...');
   await processDailyEarnings();
 });
 
 const startServer = async () => {
-  await permanentAdmin();    
+  await permanentAdmin();     
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
