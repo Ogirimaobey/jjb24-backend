@@ -10,7 +10,7 @@ const createUserTable = `
     password_hash TEXT NOT NULL,
     referral_code_used VARCHAR(50),
     own_referral_code VARCHAR(50) UNIQUE,
-    referrer_id INTEGER REFERENCES users(id) ON DELETE SET NULL, /* THE FIX */
+    referrer_id INTEGER REFERENCES users(id) ON DELETE SET NULL, 
     is_admin BOOLEAN DEFAULT false,
     balance NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -80,7 +80,7 @@ const alterTableInvestments = `
   );
 `;
 
-// UPDATED: Added referrer_id to the Alter block for safety
+// UPDATED: Added Admin Block/Suspend Columns
 const alterTableUsers = `
   ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE,
@@ -93,9 +93,14 @@ const alterTableUsers = `
   ADD COLUMN IF NOT EXISTS otp_code VARCHAR(10),  
   ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP,
   ADD COLUMN IF NOT EXISTS referrer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  -- NEW: Support for Admin Block/Suspend
+  ADD COLUMN IF NOT EXISTS account_status VARCHAR(20) DEFAULT 'active',
+  ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS block_reason TEXT,
   DROP COLUMN IF EXISTS type;
 `;
 
+// UPDATED: Fixed Crash by adding 'welcome_bonus' to allowed list
 const alterTableTransactions = `
   ALTER TABLE transactions
     ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'deposit',
@@ -103,12 +108,14 @@ const alterTableTransactions = `
     ADD COLUMN IF NOT EXISTS account_number VARCHAR(20),
     ADD COLUMN IF NOT EXISTS account_name VARCHAR(100);
   
+  -- 1. Remove the old strict rule
   ALTER TABLE transactions
     DROP CONSTRAINT IF EXISTS transactions_type_check;
   
+  -- 2. Add the NEW rule that allows 'admin_credit' AND 'welcome_bonus'
   ALTER TABLE transactions
     ADD CONSTRAINT transactions_type_check 
-    CHECK (type IN ('deposit', 'withdrawal', 'investment', 'investment_roi', 'referral_bonus', 'admin_credit'));
+    CHECK (type IN ('deposit', 'withdrawal', 'investment', 'investment_roi', 'referral_bonus', 'admin_credit', 'welcome_bonus'));
 `;
 
 const createItemTable = `
