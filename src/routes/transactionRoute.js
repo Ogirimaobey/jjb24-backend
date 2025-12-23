@@ -1,7 +1,15 @@
 import express from 'express';
-import { initializePayment, verifyPayment, requestWithdrawal, approveWithdrawal, getUserTransactions, getUserWithdrawalTransactions, getUserDepositTransactions } from '../service/transactionService.js';
+import { 
+    initializePayment, 
+    verifyPayment, 
+    requestWithdrawal, 
+    approveWithdrawal, 
+    getUserTransactions, 
+    getUserWithdrawalTransactions, 
+    getUserDepositTransactions 
+} from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
-import { getUserBalance, verifyWithdrawalPin } from '../service/userService.js'; // <--- IMPORT PIN VERIFIER
+import { getUserBalance, verifyWithdrawalPin } from '../service/userService.js';
 
 const router = express.Router();
 
@@ -28,8 +36,10 @@ router.post('/initialize', verifyToken, async (req, res) => {
 });
 
 
+// --- CRITICAL UPDATE: WEBHOOK WITH SERVER-TO-SERVER VERIFICATION ---
 router.post("/verify", async (req, res) => {
   try {
+    // 1. Validate Secret Hash (First Line of Defense)
     const signature = req.headers["verif-hash"];
     const secret = process.env.FLW_SECRET_HASH;
 
@@ -38,8 +48,47 @@ router.post("/verify", async (req, res) => {
     }
 
     const data = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
-    const result = await verifyPayment(data);
-    return res.status(200).json(result);
+    const transactionId = data.id;
+
+    console.log(`[Webhook] Received verification for TX ID: ${transactionId}`);
+
+    // 2. SERVER-TO-SERVER VERIFICATION (The Fraud Stopper)
+    // We do not trust the webhook data blindly. We ask Flutterwave directly.
+    try {
+        const flwSecretKey = process.env.FLW_SECRET_KEY; // Ensure this is in your .env
+        
+        // Native Fetch Call to Flutterwave
+        const response = await fetch(`https://api.flutterwave.com/v3/transactions/${transactionId}/verify`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${flwSecretKey}`
+            }
+        });
+
+        const verifyResponse = await response.json();
+
+        if (verifyResponse.status === 'success' && verifyResponse.data.status === 'successful') {
+            // 3. Double Check Amount (Optional but recommended)
+            if (verifyResponse.data.amount < data.amount) {
+                 console.error('[Fraud Alert] Amount mismatch via Webhook');
+                 return res.status(400).json({ success: false, message: "Amount mismatch" });
+            }
+
+            // 4. Only process if verified
+            console.log(`[Webhook] Verified Successfully with Flutterwave. Crediting user...`);
+            const result = await verifyPayment(data);
+            return res.status(200).json(result);
+        } else {
+            console.warn(`[Webhook] Verification Failed. Status: ${verifyResponse.data?.status}`);
+            return res.status(400).json({ success: false, message: "Transaction verification failed" });
+        }
+
+    } catch (apiError) {
+        console.error('[Webhook] Error contacting Flutterwave:', apiError.message);
+        // If we can't verify, we don't credit. Safety first.
+        return res.status(500).json({ success: false, message: "Verification API error" });
+    }
 
   } catch (err) {
     return res.status(400).json({ success: false, message: err.message });
@@ -47,11 +96,9 @@ router.post("/verify", async (req, res) => {
 });
 
 
-// Get user balance (FIXED BUG HERE)
+// Get user balance
 router.get('/balance/:id', verifyToken, async (req, res) => {  
   try {
-    // FIX: Destructure 'id' from params. 
-    // Previous code 'const userId = req.params' returned an object, causing DB error.
     const { id } = req.params; 
     
     if (!id) {
@@ -65,7 +112,7 @@ router.get('/balance/:id', verifyToken, async (req, res) => {
   }
 });
 
-// --- UPDATED: WITHDRAWAL REQUEST (NOW CHECKS PIN) ---
+// WITHDRAWAL REQUEST
 router.post("/withdraw", verifyToken, async (req, res) => {
   try {
     const { amount, bank_name, account_number, account_name, pin } = req.body;
@@ -76,7 +123,6 @@ router.post("/withdraw", verifyToken, async (req, res) => {
     }
 
     // 2. Verify PIN against Database
-    // If this fails, it throws an error and jumps to 'catch'
     await verifyWithdrawalPin(req.user.id, pin);
 
     // 3. Proceed with Withdrawal
@@ -84,14 +130,11 @@ router.post("/withdraw", verifyToken, async (req, res) => {
     res.status(200).json({ success: true, ...result });
 
   } catch (err) {
-    // This catches "Incorrect PIN" errors too
     res.status(400).json({ success: false, message: err.message });
   }
 });
-// ----------------------------------------------------
 
-
-//Admin approves/rejects withdrawal
+// Admin approves/rejects withdrawal
 router.patch("/approve/:reference", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { reference } = req.params;
@@ -115,7 +158,7 @@ router.get("/history", verifyToken, async (req, res) => {
   }
 });
 
-// Get withdrawal transactions for the current logged-in user
+// Get withdrawal transactions
 router.get("/withdrawals", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -126,7 +169,7 @@ router.get("/withdrawals", verifyToken, async (req, res) => {
   }
 });
 
-// Get deposit transactions for the current logged-in user
+// Get deposit transactions
 router.get("/deposits", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
