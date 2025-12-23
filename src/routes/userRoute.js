@@ -10,7 +10,11 @@ import {
   getUserReferralData,
   setWithdrawalPin, 
   getUserDashboardData,
-  adminFundUser // <--- NEW: Imported the funding function
+  adminFundUser,
+  // --- NEW IMPORTS FOR ADMIN PANEL ---
+  getAllUsers,      // To list all users
+  updateUserStatus, // To Block/Suspend
+  adminUpdateUser   // To Edit User details
 } from '../service/userService.js';
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
@@ -219,6 +223,47 @@ router.post('/admin/fund', async (req, res) => {
     const result = await adminFundUser(email, amount);
     res.status(200).json(result);
     
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// --- NEW: ADMIN MANAGE USERS ---
+
+// 1. Get All Users (Table View)
+router.get('/admin/users', async (req, res) => {
+  try {
+    // This function will be in userService.js
+    const users = await getAllUsers();
+    res.status(200).json({ success: true, users });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 2. Suspend/Block User (Status Change)
+router.patch('/admin/users/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, reason } = req.body; // status: 'active', 'suspended', 'blocked'
+    
+    // This function will be in userService.js
+    const result = await updateUserStatus(id, status, reason);
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// 3. Edit User (Admin updates name/email/phone)
+router.put('/admin/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body; // { full_name, email, phone_number }
+    
+    // This function will be in userService.js
+    const result = await adminUpdateUser(id, updateData);
+    res.status(200).json(result);
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
