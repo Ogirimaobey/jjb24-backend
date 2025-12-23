@@ -7,7 +7,7 @@ import {
   findUserByEmail, 
   findUserByPhone, 
   updateUserBalance, 
-  findUserById,
+  findUserById, 
   findUserByReferralCode, 
   updateUserVerification, 
   setUserPin, 
@@ -46,7 +46,7 @@ const sendOtpEmail = async (to, otp) => {
   });
 };
 
-// --- REGISTER USER (FIXED: Force Save Referrer ID + Send Email) ---
+// --- REGISTER USER ---
 export const registerUser = async (data) => {
   const client = await pool.connect();
   try {
@@ -61,7 +61,7 @@ export const registerUser = async (data) => {
     const existingPhone = await findUserByPhone(phone);
     if (existingPhone) throw new Error('Phone number already registered');
 
-    // 2. Resolve Referral (The Fix for Team Page)
+    // 2. Resolve Referral
     let referrerId = null;
     if (referralCode && referralCode.trim() !== "") {
       const referrer = await findUserByReferralCode(referralCode);
@@ -87,7 +87,7 @@ export const registerUser = async (data) => {
       console.error("Failed to send email, but proceeding with registration:", emailErr);
     }
 
-    // 5. Insert User (Direct SQL to ensure Linkage)
+    // 5. Insert User
     const queryText = `
       INSERT INTO users (full_name, email, phone_number, password_hash, balance, referrer_id, own_referral_code, referral_count, otp_code, otp_expires_at, is_verified)
       VALUES ($1, $2, $3, $4, 0, $5, $6, 0, $7, $8, FALSE)
@@ -112,7 +112,7 @@ export const registerUser = async (data) => {
   }
 };
 
-// --- VERIFY OTP (Preserves ₦100 Referrer Bonus) ---
+// --- VERIFY OTP (UPDATED: REMOVED REFERRER BONUS) ---
 export const verifyUserOtp = async (email, otp) => {
   const user = await findUserByEmail(email);
   if (!user) throw new Error("User not found");
@@ -124,7 +124,8 @@ export const verifyUserOtp = async (email, otp) => {
   // 1. Mark Verified
   await updateUserVerification(email, true);
 
-  // 2. Pay Referee (New User) - ₦200
+  // 2. Pay Referee (New User Welcome Bonus) - ₦200
+  // Note: We kept this so the NEW user still feels welcomed.
   const welcomeBonus = 200.0;
   const newBalance = Number(user.balance) + welcomeBonus;
   await updateUserBalance(user.id, newBalance);
@@ -136,33 +137,13 @@ export const verifyUserOtp = async (email, otp) => {
       'welcome_bonus'
   );
 
-  // 3. Pay Referrer - ₦100
-  if (user.referrer_id) {
-    try {
-      const referrer = await findUserById(user.referrer_id);
-      if (referrer) {
-        const referralBonus = 100.0;
-        const referrerNewBalance = Number(referrer.balance) + referralBonus;
-        
-        await updateUserBalance(referrer.id, referrerNewBalance);
-
-        // Receipt for Referrer
-        await createTransaction(
-            referrer.id,
-            referralBonus,
-            `REF-BONUS-${user.id}`,
-            'referral_bonus'
-        );
-        console.log(`[Bonus] Paid ₦100 to Referrer ${referrer.id}`);
-      }
-    } catch (err) {
-      console.error("[Bonus Error] Failed to pay referrer:", err.message);
-    }
-  }
+  // 3. Pay Referrer - DISABLED PER OWNER REQUEST
+  // The code to pay ₦100 to the referrer has been deleted.
+  // They will now only earn via 'distributeInvestmentCommissions' below.
 
   return {
     success: true,
-    message: `OTP verified! ₦${welcomeBonus} bonus added.`,
+    message: `OTP verified! ₦${welcomeBonus} welcome bonus added.`,
     newBalance,
   };
 };
@@ -280,7 +261,7 @@ export const distributeInvestmentCommissions = async (investorId, amount) => {
   }
 };
 
-// --- GET TEAM DATA (For Team Page) ---
+// --- GET TEAM DATA ---
 export const getUserReferralData = async (userId) => {
   const client = await pool.connect();
   try {
@@ -315,7 +296,7 @@ export const getUserReferralData = async (userId) => {
   }
 };
 
-// --- GET DASHBOARD DATA (For "My Plans" Page) ---
+// --- GET DASHBOARD DATA ---
 export const getUserDashboardData = async (userId) => {
   const investments = await getAllInvestmentsByUserId(userId);
   
@@ -349,7 +330,6 @@ export const getUserDashboardData = async (userId) => {
 // --- Edit Email ---
 export const editUserEmail = async (userId, newEmail) => {
   if (!newEmail.includes("@")) throw new Error("Invalid email");
-  // Simple update, skipping repo for brevity as this is likely simple
   await pool.query('UPDATE users SET email = $1 WHERE id = $2', [newEmail, userId]);
   return { success: true };
 };
@@ -360,7 +340,7 @@ export const getUserProfile = async (userId) => {
   return user;
 };
 
-// --- NEW: ADMIN FUNDING FUNCTION ---
+// --- ADMIN FUNDING FUNCTION ---
 export const adminFundUser = async (email, amount) => {
     // 1. Find the user
     const user = await findUserByEmail(email);
@@ -370,22 +350,21 @@ export const adminFundUser = async (email, amount) => {
     const newBalance = Number(user.balance) + Number(amount);
     await updateUserBalance(user.id, newBalance);
 
-    // 3. Create a Receipt (So the owner remembers he sent it)
+    // 3. Create a Receipt
     await createTransaction(
         user.id,
         amount,
-        `ADMIN-FUND-${Date.now()}`, // Reference
-        'admin_credit',             // Type
-        'success',                  // Status
-        'Funded by Admin'           // Description
+        `ADMIN-FUND-${Date.now()}`, 
+        'admin_credit',             
+        'success',                  
+        'Funded by Admin'           
     );
 
     return { success: true, newBalance };
 };
 
-// --- NEW: GET ALL USERS (UPDATED TO FETCH BALANCE) ---
+// --- GET ALL USERS (FOR ADMIN TABLE) ---
 export const getAllUsers = async () => {
-    // We use SELECT * to be robust and ensure we get 'balance' and everything else
     const query = `
       SELECT *
       FROM users 
@@ -395,7 +374,7 @@ export const getAllUsers = async () => {
     return rows;
 };
 
-// --- NEW: BLOCK / SUSPEND USER ---
+// --- BLOCK / SUSPEND USER ---
 export const updateUserStatus = async (userId, status, reason) => {
     // status can be: 'active', 'suspended', 'blocked'
     let isBlocked = false;
@@ -416,12 +395,10 @@ export const updateUserStatus = async (userId, status, reason) => {
     return { success: true, user: rows[0] };
 };
 
-// --- NEW: ADMIN EDIT USER (Name/Email/Phone AND BALANCE) ---
+// --- ADMIN EDIT USER (Name/Email/Phone AND BALANCE) ---
 export const adminUpdateUser = async (userId, updateData) => {
     const { full_name, email, phone_number, balance } = updateData;
     
-    // We use COALESCE to only update fields that are sent.
-    // Added balance ($5) to the list
     const query = `
         UPDATE users 
         SET 
@@ -433,7 +410,6 @@ export const adminUpdateUser = async (userId, updateData) => {
         RETURNING id, full_name, email, phone_number, balance;
     `;
     
-    // Pass the new balance to the query
     const { rows } = await pool.query(query, [userId, full_name, email, phone_number, balance]);
     if (rows.length === 0) throw new Error("User not found");
     
