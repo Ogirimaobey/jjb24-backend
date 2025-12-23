@@ -354,17 +354,32 @@ export const adminFundUser = async (email, amount) => {
 };
 
 // ==========================================================
-// --- NEW: GET ALL USERS (CALCULATES REAL TOTAL DEPOSIT) ---
+// --- FIXED: SAFER 'GET ALL USERS' TO PREVENT CRASHES ---
 // ==========================================================
 export const getAllUsers = async () => {
-    const query = `
-      SELECT u.*,
-      COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.user_id = u.id AND t.type = 'deposit' AND t.status = 'success'), 0) as total_deposited
-      FROM users u
-      ORDER BY u.created_at DESC
+    // 1. Get all users
+    const userQuery = `SELECT * FROM users ORDER BY created_at DESC`;
+    const { rows: users } = await pool.query(userQuery);
+
+    // 2. Get all successful deposits separately (This is safer than a complex SQL join)
+    const depositQuery = `
+        SELECT user_id, SUM(amount) as total 
+        FROM transactions 
+        WHERE type = 'deposit' AND status = 'success' 
+        GROUP BY user_id
     `;
-    const { rows } = await pool.query(query);
-    return rows;
+    const { rows: deposits } = await pool.query(depositQuery);
+
+    // 3. Merge them using Javascript
+    const depositMap = {};
+    deposits.forEach(d => { depositMap[d.user_id] = Number(d.total); });
+
+    const usersWithDeposits = users.map(user => ({
+        ...user,
+        total_deposited: depositMap[user.id] || 0
+    }));
+
+    return usersWithDeposits;
 };
 
 // --- BLOCK / SUSPEND USER ---
