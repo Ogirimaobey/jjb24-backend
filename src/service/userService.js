@@ -112,7 +112,7 @@ export const registerUser = async (data) => {
   }
 };
 
-// --- VERIFY OTP (UPDATED: REMOVED REFERRER BONUS) ---
+// --- VERIFY OTP ---
 export const verifyUserOtp = async (email, otp) => {
   const user = await findUserByEmail(email);
   if (!user) throw new Error("User not found");
@@ -125,7 +125,6 @@ export const verifyUserOtp = async (email, otp) => {
   await updateUserVerification(email, true);
 
   // 2. Pay Referee (New User Welcome Bonus) - ₦200
-  // Note: We kept this so the NEW user still feels welcomed.
   const welcomeBonus = 200.0;
   const newBalance = Number(user.balance) + welcomeBonus;
   await updateUserBalance(user.id, newBalance);
@@ -137,9 +136,7 @@ export const verifyUserOtp = async (email, otp) => {
       'welcome_bonus'
   );
 
-  // 3. Pay Referrer - DISABLED PER OWNER REQUEST
-  // The code to pay ₦100 to the referrer has been deleted.
-  // They will now only earn via 'distributeInvestmentCommissions' below.
+  // 3. Referrer Bonus removed per request.
 
   return {
     success: true,
@@ -207,16 +204,16 @@ export const verifyWithdrawalPin = async (userId, rawPin) => {
   return true;
 };
 
-// --- MLM COMMISSION LOGIC (5% - 3% - 2%) ---
+// --- MLM COMMISSION LOGIC ---
 export const distributeInvestmentCommissions = async (investorId, amount) => {
   const client = await pool.connect();
   try {
-    // Level 1 (Direct Parent)
+    // Level 1
     const userRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [investorId]);
     const parentId = userRes.rows[0]?.referrer_id;
 
     if (parentId) {
-      // PAY LEVEL 1 (5%)
+      // Level 1 (5%)
       const comm1 = amount * 0.05;
       await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm1, parentId]);
       await createReferralBonusTransaction(parentId, comm1, investorId, null, client);
@@ -227,7 +224,7 @@ export const distributeInvestmentCommissions = async (investorId, amount) => {
       const grandParentId = parentRes.rows[0]?.referrer_id;
 
       if (grandParentId) {
-        // PAY LEVEL 2 (3%)
+        // Level 2 (3%)
         const comm2 = amount * 0.03;
         await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm2, grandParentId]);
         const ref2 = `REF-L2-${grandParentId}-${Date.now()}`;
@@ -242,7 +239,7 @@ export const distributeInvestmentCommissions = async (investorId, amount) => {
         const greatGrandParentId = grandParentRes.rows[0]?.referrer_id;
 
         if (greatGrandParentId) {
-          // PAY LEVEL 3 (2%)
+          // Level 3 (2%)
           const comm3 = amount * 0.02;
           await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm3, greatGrandParentId]);
           const ref3 = `REF-L3-${greatGrandParentId}-${Date.now()}`;
@@ -268,7 +265,6 @@ export const getUserReferralData = async (userId) => {
     const user = await findUserById(userId);
     if(!user) throw new Error("User not found");
 
-    // 1. Get total commission earned
     const commQuery = `
       SELECT SUM(amount) as total 
       FROM transactions 
@@ -277,7 +273,6 @@ export const getUserReferralData = async (userId) => {
     const commRes = await client.query(commQuery, [userId]);
     const totalCommission = parseFloat(commRes.rows[0].total || 0);
 
-    // 2. Get list of direct referrals (Team)
     const teamQuery = `
       SELECT id, full_name as name, created_at as joined_date, balance
       FROM users 
@@ -299,8 +294,6 @@ export const getUserReferralData = async (userId) => {
 // --- GET DASHBOARD DATA ---
 export const getUserDashboardData = async (userId) => {
   const investments = await getAllInvestmentsByUserId(userId);
-  
-  // Filter only active investments and calculate days left
   const activeInvestments = investments.map(inv => {
     const created = new Date(inv.created_at);
     const now = new Date();
@@ -342,15 +335,12 @@ export const getUserProfile = async (userId) => {
 
 // --- ADMIN FUNDING FUNCTION ---
 export const adminFundUser = async (email, amount) => {
-    // 1. Find the user
     const user = await findUserByEmail(email);
     if (!user) throw new Error("User email not found");
 
-    // 2. Add Money
     const newBalance = Number(user.balance) + Number(amount);
     await updateUserBalance(user.id, newBalance);
 
-    // 3. Create a Receipt
     await createTransaction(
         user.id,
         amount,
@@ -363,12 +353,15 @@ export const adminFundUser = async (email, amount) => {
     return { success: true, newBalance };
 };
 
-// --- GET ALL USERS (FOR ADMIN TABLE) ---
+// ==========================================================
+// --- NEW: GET ALL USERS (CALCULATES REAL TOTAL DEPOSIT) ---
+// ==========================================================
 export const getAllUsers = async () => {
     const query = `
-      SELECT *
-      FROM users 
-      ORDER BY created_at DESC
+      SELECT u.*,
+      COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.user_id = u.id AND t.type = 'deposit' AND t.status = 'success'), 0) as total_deposited
+      FROM users u
+      ORDER BY u.created_at DESC
     `;
     const { rows } = await pool.query(query);
     return rows;
@@ -376,7 +369,6 @@ export const getAllUsers = async () => {
 
 // --- BLOCK / SUSPEND USER ---
 export const updateUserStatus = async (userId, status, reason) => {
-    // status can be: 'active', 'suspended', 'blocked'
     let isBlocked = false;
     if (status === 'suspended' || status === 'blocked') {
         isBlocked = true;
@@ -395,7 +387,7 @@ export const updateUserStatus = async (userId, status, reason) => {
     return { success: true, user: rows[0] };
 };
 
-// --- ADMIN EDIT USER (Name/Email/Phone AND BALANCE) ---
+// --- ADMIN EDIT USER ---
 export const adminUpdateUser = async (userId, updateData) => {
     const { full_name, email, phone_number, balance } = updateData;
     
