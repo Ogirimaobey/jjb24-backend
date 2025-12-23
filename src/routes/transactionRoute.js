@@ -1,4 +1,5 @@
 import express from 'express';
+import axios from 'axios'; // IMPORTING AXIOS (Crucial for reliable API calls)
 import { 
     initializePayment, 
     verifyPayment, 
@@ -19,11 +20,11 @@ router.post('/initialize', verifyToken, async (req, res) => {
     console.log('[Payment Route] ===== PAYMENT INITIALIZATION REQUEST =====');
     const {amount} = req.body;
     const {id: userId, email, phone } = req.user;
-    
+     
     console.log('[Payment Route] Initializing payment for:', { userId, amount });
-    
+     
     const data = await initializePayment(userId, amount, email, phone);
-    
+     
     res.status(200).json({
       success: true,
       message: 'Payment initialized',
@@ -36,7 +37,7 @@ router.post('/initialize', verifyToken, async (req, res) => {
 });
 
 
-// --- CRITICAL UPDATE: WEBHOOK WITH SERVER-TO-SERVER VERIFICATION ---
+// --- CRITICAL UPDATE: WEBHOOK WITH AXIOS VERIFICATION ---
 router.post("/verify", async (req, res) => {
   try {
     // 1. Validate Secret Hash (First Line of Defense)
@@ -53,23 +54,20 @@ router.post("/verify", async (req, res) => {
     console.log(`[Webhook] Received verification for TX ID: ${transactionId}`);
 
     // 2. SERVER-TO-SERVER VERIFICATION (The Fraud Stopper)
-    // We do not trust the webhook data blindly. We ask Flutterwave directly.
     try {
         const flwSecretKey = process.env.FLW_SECRET_KEY; // Ensure this is in your .env
         
-        // Native Fetch Call to Flutterwave
-        const response = await fetch(`https://api.flutterwave.com/v3/transactions/${transactionId}/verify`, {
-            method: 'GET',
+        // REPLACED FETCH WITH AXIOS
+        const response = await axios.get(`https://api.flutterwave.com/v3/transactions/${transactionId}/verify`, {
             headers: {
-                'Content-Type': 'application/json',
                 'Authorization': `Bearer ${flwSecretKey}`
             }
         });
 
-        const verifyResponse = await response.json();
+        const verifyResponse = response.data;
 
         if (verifyResponse.status === 'success' && verifyResponse.data.status === 'successful') {
-            // 3. Double Check Amount (Optional but recommended)
+            // 3. Double Check Amount
             if (verifyResponse.data.amount < data.amount) {
                  console.error('[Fraud Alert] Amount mismatch via Webhook');
                  return res.status(400).json({ success: false, message: "Amount mismatch" });
@@ -100,11 +98,11 @@ router.post("/verify", async (req, res) => {
 router.get('/balance/:id', verifyToken, async (req, res) => {  
   try {
     const { id } = req.params; 
-    
+     
     if (!id) {
       return res.status(400).json({ message: 'User ID missing' });
     }
-    
+     
     const balance = await getUserBalance(id);
     return res.json({ balance });
   } catch (err) {
