@@ -36,16 +36,13 @@ export const initializePayment = async (userId, amount, email, phone) => {
     customer: {
       email,
       phonenumber: phone,
-      name: customerName, // Added: Flutterwave may require customer name
+      name: customerName, 
     },
     customizations: {
       title: "JJB24 Deposit",
       description: "Wallet funding via Flutterwave",
     },
   };
-
-  // Note: public_key is NOT needed in payload for API-created hosted payment links
-  // Flutterwave automatically uses the public key associated with the account
 
   try {
     console.log('[initializePayment] Initializing payment with Flutterwave...');
@@ -58,7 +55,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
       "Content-Type": "application/json",
     },
   });
-console.log("[initializePayment] Flutterwave response status:", response.status);
+  console.log("[initializePayment] Flutterwave response status:", response.status);
     console.log("[initializePayment] Flutterwave response data:", JSON.stringify(response.data, null, 2));
 
     if (!response.data || !response.data.data || !response.data.data.link) {
@@ -101,6 +98,17 @@ export const verifyPayment = async (event) => {
 
   const transaction = await findTransactionByReference(tx_ref);
   if (!transaction) throw new Error("Transaction not found");
+
+  // ============================================================
+  // --- CRITICAL SECURITY FIX: PREVENT DOUBLE CREDITING ---
+  // ============================================================
+  // If this transaction is ALREADY marked as success in our database,
+  // we must STOP immediately. This prevents replay attacks.
+  if (transaction.status === 'success') {
+      console.log(`[verifyPayment] Security Check: Transaction ${tx_ref} was ALREADY processed. Blocking duplicate credit.`);
+      return { success: true, message: "Transaction already successful (Duplicate blocked)" };
+  }
+  // ============================================================
 
    if (
     status === "successful" ||
