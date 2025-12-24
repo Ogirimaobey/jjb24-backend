@@ -1,8 +1,9 @@
 import express from 'express';
-import axios from 'axios'; // IMPORTING AXIOS (Crucial for reliable API calls)
+import axios from 'axios'; 
 import { 
     initializePayment, 
     verifyPayment, 
+    verifyTransactionManual, // ADDED: The Force Check Tool
     requestWithdrawal, 
     approveWithdrawal, 
     getUserTransactions, 
@@ -20,27 +21,60 @@ router.post('/initialize', verifyToken, async (req, res) => {
     console.log('[Payment Route] ===== PAYMENT INITIALIZATION REQUEST =====');
     const {amount} = req.body;
     const {id: userId, email, phone } = req.user;
-     
-    console.log('[Payment Route] Initializing payment for:', { userId, amount });
-     
     const data = await initializePayment(userId, amount, email, phone);
-     
-    res.status(200).json({
-      success: true,
-      message: 'Payment initialized',
-      data,
-    });
+    res.status(200).json({ success: true, message: 'Payment initialized', data });
   } catch (err) {
     console.error('[Payment Route] Error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
+// ============================================================
+// --- ADDED: FORCE CHECK ROUTES (The "Outside the Box" Fix) ---
+// ============================================================
 
-// --- CRITICAL UPDATE: WEBHOOK WITH AXIOS VERIFICATION ---
+// 1. MANUAL CONFIRM (Frontend or Admin calls this to force an update)
+router.post('/confirm', verifyToken, async (req, res) => {
+    try {
+        const { reference } = req.body;
+        if (!reference) return res.status(400).json({success: false, message: "Reference required"});
+
+        console.log(`[Manual Verify] User ${req.user.id} forcing check for ${reference}`);
+        
+        // This calls the Force Check Engine in the Service
+        const result = await verifyTransactionManual(reference);
+        
+        res.status(200).json(result);
+    } catch (err) {
+        console.error('[Manual Verify] Error:', err.message);
+        res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+// 2. AUTO-REDIRECT (Flutterwave sends user here immediately after payment)
+router.get('/verify-redirect', async (req, res) => {
+    const { tx_ref, status } = req.query;
+    
+    // As users land here, we INSTANTLY check the bank
+    if (status === 'successful' || status === 'completed') {
+        try {
+            console.log(`[Auto-Verify] User returned from bank. Checking ${tx_ref}...`);
+            await verifyTransactionManual(tx_ref);
+        } catch (e) {
+            console.error("[Auto-Verify] Background check failed (user will still see success if webhook worked):", e.message);
+        }
+    }
+    
+    // Send them back to your Dashboard
+    res.redirect('https://jjbwines.com/#home?payment=verified'); 
+});
+// ============================================================
+
+
+// WEBHOOK (Kept as a Backup Listener)
 router.post("/verify", async (req, res) => {
   try {
-    // 1. Validate Secret Hash (First Line of Defense)
+    // 1. Validate Secret Hash
     const signature = req.headers["verif-hash"];
     const secret = process.env.FLW_SECRET_HASH;
 
@@ -53,15 +87,12 @@ router.post("/verify", async (req, res) => {
 
     console.log(`[Webhook] Received verification for TX ID: ${transactionId}`);
 
-    // 2. SERVER-TO-SERVER VERIFICATION (The Fraud Stopper)
+    // 2. SERVER-TO-SERVER VERIFICATION
     try {
-        const flwSecretKey = process.env.FLW_SECRET_KEY; // Ensure this is in your .env
+        const flwSecretKey = process.env.FLW_SECRET_KEY;
         
-        // REPLACED FETCH WITH AXIOS
         const response = await axios.get(`https://api.flutterwave.com/v3/transactions/${transactionId}/verify`, {
-            headers: {
-                'Authorization': `Bearer ${flwSecretKey}`
-            }
+            headers: { 'Authorization': `Bearer ${flwSecretKey}` }
         });
 
         const verifyResponse = response.data;
@@ -73,9 +104,9 @@ router.post("/verify", async (req, res) => {
                  return res.status(400).json({ success: false, message: "Amount mismatch" });
             }
 
-            // 4. Only process if verified
-            console.log(`[Webhook] Verified Successfully with Flutterwave. Crediting user...`);
-            const result = await verifyPayment(data);
+            // 4. Process
+            console.log(`[Webhook] Verified Successfully. Crediting user...`);
+            const result = await verifyPayment(data); // Calls Service Logic
             return res.status(200).json(result);
         } else {
             console.warn(`[Webhook] Verification Failed. Status: ${verifyResponse.data?.status}`);
@@ -84,7 +115,6 @@ router.post("/verify", async (req, res) => {
 
     } catch (apiError) {
         console.error('[Webhook] Error contacting Flutterwave:', apiError.message);
-        // If we can't verify, we don't credit. Safety first.
         return res.status(500).json({ success: false, message: "Verification API error" });
     }
 
@@ -98,11 +128,7 @@ router.post("/verify", async (req, res) => {
 router.get('/balance/:id', verifyToken, async (req, res) => {  
   try {
     const { id } = req.params; 
-     
-    if (!id) {
-      return res.status(400).json({ message: 'User ID missing' });
-    }
-     
+    if (!id) return res.status(400).json({ message: 'User ID missing' });
     const balance = await getUserBalance(id);
     return res.json({ balance });
   } catch (err) {
@@ -114,19 +140,10 @@ router.get('/balance/:id', verifyToken, async (req, res) => {
 router.post("/withdraw", verifyToken, async (req, res) => {
   try {
     const { amount, bank_name, account_number, account_name, pin } = req.body;
-
-    // 1. Validate PIN Input
-    if (!pin) {
-        return res.status(400).json({ success: false, message: "Withdrawal PIN is required" });
-    }
-
-    // 2. Verify PIN against Database
+    if (!pin) return res.status(400).json({ success: false, message: "Withdrawal PIN is required" });
     await verifyWithdrawalPin(req.user.id, pin);
-
-    // 3. Proceed with Withdrawal
     const result = await requestWithdrawal(req.user.id, amount, bank_name, account_number, account_name);
     res.status(200).json({ success: true, ...result });
-
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
@@ -144,8 +161,7 @@ router.patch("/approve/:reference", verifyToken, verifyAdmin, async (req, res) =
   }
 });
 
-
-// Get all transactions for the current logged-in user
+// History Routes
 router.get("/history", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -156,7 +172,6 @@ router.get("/history", verifyToken, async (req, res) => {
   }
 });
 
-// Get withdrawal transactions
 router.get("/withdrawals", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -167,7 +182,6 @@ router.get("/withdrawals", verifyToken, async (req, res) => {
   }
 });
 
-// Get deposit transactions
 router.get("/deposits", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
