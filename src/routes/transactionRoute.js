@@ -1,138 +1,125 @@
 import express from 'express';
 import axios from 'axios'; 
+import multer from 'multer';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import { 
     initializePayment, 
     verifyPayment, 
-    verifyTransactionManual, // The Force Check Tool
+    verifyTransactionManual, 
     requestWithdrawal, 
     approveWithdrawal, 
     getUserTransactions, 
     getUserWithdrawalTransactions, 
-    getUserDepositTransactions 
+    getUserDepositTransactions,
+    createManualDeposit // <--- NEW SERVICE FUNCTION
 } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
 import { getUserBalance, verifyWithdrawalPin } from '../service/userService.js';
 
 const router = express.Router();
 
-// User initiates payment
+// ==========================================
+// 1. CONFIGURE IMAGE UPLOAD (Receipts)
+// ==========================================
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'receipts',
+    allowed_formats: ['jpg', 'png', 'jpeg', 'pdf'],
+  },
+});
+
+const upload = multer({ storage: storage });
+
+// ==========================================
+// 2. NEW ROUTE: MANUAL DEPOSIT (Plan B)
+// ==========================================
+// User uploads a screenshot -> We save it -> You confirm it later
+router.post('/deposit/manual', verifyToken, upload.single('receipt'), async (req, res) => {
+    try {
+        console.log('[Manual Deposit] Request received.');
+        const { amount } = req.body;
+        const userId = req.user.id;
+        const file = req.file;
+
+        // Validation
+        if (!file) {
+            return res.status(400).json({ success: false, message: "Please upload the payment receipt screenshot." });
+        }
+        if (!amount || amount < 500) {
+             return res.status(400).json({ success: false, message: "Valid amount is required (Min: 500)." });
+        }
+
+        console.log(`[Manual Deposit] User: ${userId}, Amount: ${amount}, File: ${file.path}`);
+
+        // Call Service to Save to DB (We will add this function to Service next)
+        const result = await createManualDeposit(userId, amount, file.path);
+
+        res.status(200).json({ 
+            success: true, 
+            message: "Receipt submitted successfully! Admin will verify and credit your wallet shortly.", 
+            data: result 
+        });
+
+    } catch (err) {
+        console.error("[Manual Deposit] Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to submit receipt. Please try again." });
+    }
+});
+
+
+// ==========================================
+// 3. EXISTING ROUTES (Keep these for History/Withdrawals)
+// ==========================================
+
+// User initiates payment (Flutterwave - Currently Blocked but kept for future)
 router.post('/initialize', verifyToken, async (req, res) => {
   try {
-    console.log('[Payment Route] ===== PAYMENT INITIALIZATION REQUEST =====');
     const {amount} = req.body;
     const {id: userId, email, phone } = req.user;
-    
-    console.log('[Payment Route] Initializing payment for:', { userId, amount });
-    
     const data = await initializePayment(userId, amount, email, phone);
-    
     res.status(200).json({ success: true, message: 'Payment initialized', data });
   } catch (err) {
-    console.error('[Payment Route] Error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// ============================================================
-// --- FORCE CHECK ROUTES (The "Outside the Box" Fix) ---
-// ============================================================
-
-// 1. MANUAL CONFIRM (Frontend or Admin calls this to force an update)
+// Force Check Route (Still useful for older stuck transactions)
 router.post('/confirm', verifyToken, async (req, res) => {
     try {
         const { reference } = req.body;
-        if (!reference) return res.status(400).json({success: false, message: "Reference required"});
-
-        console.log(`[Manual Verify] User ${req.user.id} forcing check for ${reference}`);
-        
-        // This calls the Force Check Engine in the Service
         const result = await verifyTransactionManual(reference);
-        
         res.status(200).json(result);
     } catch (err) {
-        console.error('[Manual Verify] Error:', err.message);
         res.status(400).json({ success: false, message: err.message });
     }
 });
 
-// 2. AUTO-REDIRECT (Flutterwave sends user here immediately after payment)
-router.get('/verify-redirect', async (req, res) => {
-    const { tx_ref, status } = req.query;
-    
-    // As users land here, we INSTANTLY check the bank
-    if (status === 'successful' || status === 'completed') {
-        try {
-            console.log(`[Auto-Verify] User returned from bank. Checking ${tx_ref}...`);
-            await verifyTransactionManual(tx_ref);
-        } catch (e) {
-            console.error("[Auto-Verify] Background check failed (user will still see success if webhook worked):", e.message);
-        }
-    }
-    
-    // Send them back to your Dashboard
-    res.redirect('https://jjbwines.com/#home?payment=verified'); 
-});
-// ============================================================
-
-
-// WEBHOOK (Kept as a Backup Listener)
+// Webhook
 router.post("/verify", async (req, res) => {
   try {
-    // 1. Validate Secret Hash
     const signature = req.headers["verif-hash"];
     const secret = process.env.FLW_SECRET_HASH;
-
-    if (!signature || signature !== secret) {
-      return res.status(401).json({ success: false, message: "Invalid signature" });
-    }
-
-    const data = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
-    const transactionId = data.id;
-
-    console.log(`[Webhook] Received verification for TX ID: ${transactionId}`);
-
-    // 2. SERVER-TO-SERVER VERIFICATION
-    try {
-        const flwSecretKey = process.env.FLW_SECRET_KEY;
-        
-        const response = await axios.get(`https://api.flutterwave.com/v3/transactions/${transactionId}/verify`, {
-            headers: { 'Authorization': `Bearer ${flwSecretKey}` }
-        });
-
-        const verifyResponse = response.data;
-
-        if (verifyResponse.status === 'success' && verifyResponse.data.status === 'successful') {
-            // 3. Double Check Amount
-            if (verifyResponse.data.amount < data.amount) {
-                 console.error('[Fraud Alert] Amount mismatch via Webhook');
-                 return res.status(400).json({ success: false, message: "Amount mismatch" });
-            }
-
-            // 4. Process
-            console.log(`[Webhook] Verified Successfully. Crediting user...`);
-            const result = await verifyPayment(data); // Calls Service Logic
-            return res.status(200).json(result);
-        } else {
-            console.warn(`[Webhook] Verification Failed. Status: ${verifyResponse.data?.status}`);
-            return res.status(400).json({ success: false, message: "Transaction verification failed" });
-        }
-
-    } catch (apiError) {
-        console.error('[Webhook] Error contacting Flutterwave:', apiError.message);
-        return res.status(500).json({ success: false, message: "Verification API error" });
-    }
-
+    if (!signature || signature !== secret) return res.status(401).json({ success: false, message: "Invalid signature" });
+    const data = req.body;
+    await verifyPayment({ data }); 
+    res.status(200).json({ success: true });
   } catch (err) {
-    return res.status(400).json({ success: false, message: err.message });
+    res.status(400).json({ success: false, message: err.message });
   }
 });
-
 
 // Get user balance
 router.get('/balance/:id', verifyToken, async (req, res) => {  
   try {
     const { id } = req.params; 
-    if (!id) return res.status(400).json({ message: 'User ID missing' });
     const balance = await getUserBalance(id);
     return res.json({ balance });
   } catch (err) {
