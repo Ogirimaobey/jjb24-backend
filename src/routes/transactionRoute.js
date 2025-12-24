@@ -3,7 +3,7 @@ import axios from 'axios';
 import { 
     initializePayment, 
     verifyPayment, 
-    verifyTransactionManual, // ADDED: The Force Check Tool
+    verifyTransactionManual, // The Force Check Tool
     requestWithdrawal, 
     approveWithdrawal, 
     getUserTransactions, 
@@ -21,7 +21,11 @@ router.post('/initialize', verifyToken, async (req, res) => {
     console.log('[Payment Route] ===== PAYMENT INITIALIZATION REQUEST =====');
     const {amount} = req.body;
     const {id: userId, email, phone } = req.user;
+    
+    console.log('[Payment Route] Initializing payment for:', { userId, amount });
+    
     const data = await initializePayment(userId, amount, email, phone);
+    
     res.status(200).json({ success: true, message: 'Payment initialized', data });
   } catch (err) {
     console.error('[Payment Route] Error:', err.message);
@@ -30,7 +34,7 @@ router.post('/initialize', verifyToken, async (req, res) => {
 });
 
 // ============================================================
-// --- ADDED: FORCE CHECK ROUTES (The "Outside the Box" Fix) ---
+// --- FORCE CHECK ROUTES (The "Outside the Box" Fix) ---
 // ============================================================
 
 // 1. MANUAL CONFIRM (Frontend or Admin calls this to force an update)
