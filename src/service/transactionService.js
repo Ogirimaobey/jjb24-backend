@@ -1,7 +1,16 @@
 import axios from "axios";
 import dotenv from "dotenv";
-import pool from '../config/database.js'; // ADDED: Direct Database Access
-import { createTransaction, findTransactionByReference, updateTransactionStatus, createWithdrawalTransaction, getAllTransactionsByUserId, getWithdrawalTransactionsByUserId, getDepositTransactionsByUserId, getPendingWithdrawals } from "../repositories/transactionRepository.js";
+import pool from '../config/database.js'; // Direct Database Access for speed and safety
+import { 
+    createTransaction, 
+    findTransactionByReference, 
+    updateTransactionStatus, 
+    createWithdrawalTransaction, 
+    getAllTransactionsByUserId, 
+    getWithdrawalTransactionsByUserId, 
+    getDepositTransactionsByUserId, 
+    getPendingWithdrawals 
+} from "../repositories/transactionRepository.js";
 import { findUserById } from "../repositories/userRepository.js"; 
 import { getAllInvestmentsByUserId } from "../repositories/investmentRepository.js";
 
@@ -10,10 +19,52 @@ dotenv.config();
 const FLW_BASE_URL = process.env.FLW_BASE_URL;
 const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY;
 const FLW_PUBLIC_KEY = process.env.FLW_PUBLIC_KEY;
+
+// Cache for bank codes to prevent repeated API calls
 let bankCodeCache = {};
 let lastFetched = 0;
 
-// Initialize a Flutterwave payment
+// =========================================================================
+// SECTION 1: MANUAL DEPOSIT SYSTEM (PLAN B - RECEIPT UPLOAD)
+// This handles deposits when the automated gateway is blocked.
+// =========================================================================
+
+export const createManualDeposit = async (userId, amount, receiptUrl) => {
+  const user = await findUserById(userId);
+  if (!user) throw new Error("User not found.");
+
+  const reference = `MANUAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+  // Query to insert transaction + receipt URL
+  const query = `
+    INSERT INTO transactions (user_id, amount, type, status, reference, receipt_url, created_at)
+    VALUES ($1, $2, 'deposit', 'pending', $3, $4, NOW())
+    RETURNING *
+  `;
+
+  try {
+    const { rows } = await pool.query(query, [userId, amount, reference, receiptUrl]);
+    return rows[0];
+  } catch (error) {
+    console.error("[Manual Deposit] Database Insert Error:", error.message);
+    
+    // FALLBACK: If 'receipt_url' column is missing in the database, 
+    // we save the transaction without the image so the user's request isn't lost.
+    if (error.message.includes('receipt_url') || error.code === '42703') {
+        console.warn("[Manual Deposit] 'receipt_url' column missing. Saving without image.");
+        const fallbackQuery = `INSERT INTO transactions (user_id, amount, type, status, reference, created_at) VALUES ($1, $2, 'deposit', 'pending', $3, NOW()) RETURNING *`;
+        const { rows } = await pool.query(fallbackQuery, [userId, amount, reference]);
+        return rows[0];
+    }
+    throw error;
+  }
+};
+
+// =========================================================================
+// SECTION 2: AUTOMATED PAYMENT SYSTEM (PLAN A - FLUTTERWAVE)
+// These functions handle the automated flow and "Force Checks".
+// =========================================================================
+
 export const initializePayment = async (userId, amount, email, phone) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found.");
@@ -27,20 +78,20 @@ export const initializePayment = async (userId, amount, email, phone) => {
 
   const customerName = user.full_name || email.split('@')[0] || 'Customer';
 
-  // --- UPDATED: Redirect to Backend Auto-Verify Route ---
+  // Redirect Logic: Sends user to our backend auto-verify route first
   const payload = {
     tx_ref: reference,
     amount,
     currency: "NGN",
     redirect_url: "https://jjb24-backend.onrender.com/api/payment/verify-redirect", // Forces check on return
-    customer: {
-      email,
-      phonenumber: phone,
-      name: customerName, 
+    customer: { 
+        email, 
+        phonenumber: phone, 
+        name: customerName 
     },
-    customizations: {
-      title: "JJB24 Deposit",
-      description: "Wallet funding via Flutterwave",
+    customizations: { 
+        title: "JJB24 Deposit", 
+        description: "Wallet funding via Flutterwave" 
     },
   };
 
@@ -61,13 +112,11 @@ export const initializePayment = async (userId, amount, email, phone) => {
   }
 };
 
-// ============================================================
-// --- NEW: FORCE CHECK ENGINE (The "Outside the Box" Fix) ---
-// ============================================================
+// "Force Check" Engine - actively asks the bank for status
 export const verifyTransactionManual = async (reference) => {
     console.log(`[ForceCheck] Starting verification for ${reference}...`);
-
-    // 1. Check local DB status first
+    
+    // 1. Check local DB status
     const transaction = await findTransactionByReference(reference);
     if (!transaction) throw new Error("Transaction reference not found in our records.");
     
@@ -75,7 +124,7 @@ export const verifyTransactionManual = async (reference) => {
         return { success: true, message: "Transaction already confirmed." };
     }
 
-    // 2. ASK FLUTTERWAVE DIRECTLY (Bypassing Webhook)
+    // 2. Query Flutterwave API
     try {
         const response = await axios.get(`${FLW_BASE_URL}/transactions/verify_by_reference?tx_ref=${reference}`, {
             headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` }
@@ -83,16 +132,14 @@ export const verifyTransactionManual = async (reference) => {
 
         const flwData = response.data.data;
 
-        // 3. Check if Flutterwave says it's successful
-        // We also check Amount >= Expected Amount to prevent fraud
+        // 3. Validate Success & Amount
         if (flwData.status === "successful" && flwData.amount >= Number(transaction.amount)) {
+            console.log(`[ForceCheck] Confirmed! Crediting User...`);
             
-            console.log(`[ForceCheck] Flutterwave Confirmed! Crediting User...`);
-            
-            // A. Mark DB as Success
+            // Mark Success
             await updateTransactionStatus(reference, "success");
 
-            // B. Direct SQL Balance Update (The Bulletproof Way)
+            // Credit Balance
             const user = await findUserById(transaction.user_id);
             const newBalance = Number(user.balance) + Number(transaction.amount); 
             
@@ -102,7 +149,7 @@ export const verifyTransactionManual = async (reference) => {
             return { success: true, message: "Payment Verified & Wallet Funded!" };
 
         } else {
-            console.log(`[ForceCheck] Payment not successful yet. Status: ${flwData.status}`);
+            console.log(`[ForceCheck] Payment status is: ${flwData.status}`);
             return { success: false, message: "Payment not successful or pending." };
         }
 
@@ -112,13 +159,13 @@ export const verifyTransactionManual = async (reference) => {
     }
 };
 
-// Verify payment (Webhook) - Kept as backup listener
 export const verifyPayment = async (event) => {
   const { tx_ref, status, amount } = event.data; 
 
   const transaction = await findTransactionByReference(tx_ref);
   if (!transaction) throw new Error("Transaction not found");
 
+  // Prevent double crediting
   if (transaction.status === 'success') {
       console.log(`[verifyPayment] Blocked Duplicate: Transaction ${tx_ref} is already successful.`);
       return { success: true, message: "Transaction already successful" };
@@ -127,7 +174,7 @@ export const verifyPayment = async (event) => {
    if (status === "successful" || event.event === "charge.completed") {
     console.log(`[verifyPayment] Processing Success for ${tx_ref}`);
 
-    // --- FRAUD CHECK ---
+    // Fraud Check: Ensure amount paid matches expected amount
     const paidAmount = Number(amount);
     const expectedAmount = Number(transaction.amount);
 
@@ -137,17 +184,16 @@ export const verifyPayment = async (event) => {
         return { success: false, message: "Amount mismatch: Payment declined." };
     }
 
-    // A. Mark as Success
+    // Update Status
     await updateTransactionStatus(tx_ref, "success");
 
-    // B. Find User
+    // Update Balance
     const user = await findUserById(transaction.user_id);
     if (!user) {
         console.error(`[verifyPayment] User not found for transaction ${tx_ref}`);
         return { success: false, message: "User not found" };
     }
 
-    // C. Force Update Balance (Direct SQL)
     const newBalance = Number(user.balance) + expectedAmount;
     console.log(`[verifyPayment] FORCING DB UPDATE: User ${user.email} | New Balance: ₦${newBalance}`);
 
@@ -160,28 +206,29 @@ export const verifyPayment = async (event) => {
   return { success: true, message: "Transaction verified" };
 };
 
-// User initiates withdrawal 
+// =========================================================================
+// SECTION 3: WITHDRAWAL MANAGEMENT
+// Handles requesting and approving withdrawals.
+// =========================================================================
+
 export const requestWithdrawal = async (userId, amount, bankName, accountNumber, accountName) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
-
+  
+  // Validation
   if (Number(amount) < 800) throw new Error("Minimum withdrawal amount is ₦800");
   if (Number(user.balance) < Number(amount)) throw new Error("Insufficient balance");
 
   const reference = `WD-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  const transaction = await createWithdrawalTransaction(userId, amount, reference, bankName, accountNumber, accountName);
 
-  const transaction = await createWithdrawalTransaction(
-    userId, amount, reference, bankName, accountNumber, accountName
-  );
-
-  // Direct SQL Update
+  // Debit User Immediately
   const newBalance = Number(user.balance) - Number(amount);
   await pool.query('UPDATE users SET balance = $1 WHERE id = $2', [newBalance, userId]);
 
   return { message: "Withdrawal request submitted.", transaction };
 };
 
-// Admin approves or rejects withdrawal
 export const approveWithdrawal = async (reference, approve = true) => {
   console.log(`[approveWithdrawal] Processing ${reference} (Approve: ${approve})`);
   
@@ -194,6 +241,7 @@ export const approveWithdrawal = async (reference, approve = true) => {
     if (!user) throw new Error("User not found");
 
     if (approve) {
+      // 1. Get Bank Code
       let bankCode;
       try {
         bankCode = await getBankCode(transaction.bank_name);
@@ -201,6 +249,7 @@ export const approveWithdrawal = async (reference, approve = true) => {
         throw new Error(`Failed to get bank code: ${bankError.message}`);
       }
 
+      // 2. Calculate Payout (Minus Fee)
       const grossAmount = Number(transaction.amount);
       const netAmount = Math.round(grossAmount * 0.91 * 100) / 100; 
 
@@ -213,27 +262,22 @@ export const approveWithdrawal = async (reference, approve = true) => {
         reference: transaction.reference,
       };
 
-      try {
-        const response = await axios.post(`${FLW_BASE_URL}/transfers`, payload, {
+      // 3. Send Transfer Request to Flutterwave
+      const response = await axios.post(`${FLW_BASE_URL}/transfers`, payload, {
           headers: { Authorization: `Bearer ${FLW_SECRET_KEY}`, "Content-Type": "application/json" },
-        });
+      });
 
-        if (response.data.status === "success") {
+      if (response.data.status === "success") {
           await updateTransactionStatus(reference, "success");
-          return {
-            message: `Withdrawal approved & sent. Net payout: ₦${netAmount.toLocaleString()}`,
-            transactionRef: reference,
-            grossAmount: grossAmount,
-            netAmount: netAmount,
+          return { 
+            message: `Withdrawal approved & sent. Net: ₦${netAmount}`, 
+            transactionRef: reference 
           };
-        } else {
+      } else {
           throw new Error(response.data.message || "Transfer failed");
-        }
-      } catch (error) {
-        throw new Error(error.response?.data?.message || error.message || "Flutterwave transfer failed");
       }
     } else {
-      // Refund Logic (Direct SQL)
+      // REJECT Logic: Refund the user
       const refundBalance = Number(user.balance) + Number(transaction.amount);
       await pool.query('UPDATE users SET balance = $1 WHERE id = $2', [refundBalance, user.id]);
       
@@ -246,28 +290,32 @@ export const approveWithdrawal = async (reference, approve = true) => {
   }
 };
 
+// Helper: Get Bank Code from Flutterwave
 const getBankCode = async (bankName) => {
   const now = Date.now();
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  if (Object.keys(bankCodeCache).length === 0 || now - lastFetched > oneDay) {
-    const response = await axios.get(`${FLW_BASE_URL}/banks/NG`, {
-      headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
-    });
-    bankCodeCache = {};
+  // Refresh cache every 24 hours
+  if (Object.keys(bankCodeCache).length === 0 || now - lastFetched > 86400000) {
+    const response = await axios.get(`${FLW_BASE_URL}/banks/NG`, { headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` } });
     response.data.data.forEach((bank) => { bankCodeCache[bank.name.toLowerCase()] = bank.code; });
     lastFetched = now;
   }
-
+  
+  // Try exact match
   let code = bankCodeCache[bankName.toLowerCase()];
+  
+  // Try partial match
   if (!code) {
     const matchedBank = Object.keys(bankCodeCache).find((name) => name.includes(bankName.toLowerCase()));
     if (matchedBank) code = bankCodeCache[matchedBank];
   }
-
+  
   if (!code) throw new Error(`Bank code not found for: ${bankName}`);
   return code;
 };
+
+// =========================================================================
+// SECTION 4: DATA GETTERS (History)
+// =========================================================================
 
 export const getUserTransactions = async (userId) => {
   const transactions = await getAllTransactionsByUserId(userId);
