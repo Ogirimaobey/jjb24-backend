@@ -94,7 +94,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
 
 // Verify payment and update user balance
 export const verifyPayment = async (event) => {
-  const { tx_ref, status, amount } = event.data;
+  const { tx_ref, status, amount } = event.data; // amount here comes from the bank
 
   const transaction = await findTransactionByReference(tx_ref);
   if (!transaction) throw new Error("Transaction not found");
@@ -102,8 +102,6 @@ export const verifyPayment = async (event) => {
   // ============================================================
   // --- CRITICAL SECURITY FIX: PREVENT DOUBLE CREDITING ---
   // ============================================================
-  // If this transaction is ALREADY marked as success in our database,
-  // we must STOP immediately. This prevents replay attacks.
   if (transaction.status === 'success') {
       console.log(`[verifyPayment] Security Check: Transaction ${tx_ref} was ALREADY processed. Blocking duplicate credit.`);
       return { success: true, message: "Transaction already successful (Duplicate blocked)" };
@@ -118,10 +116,32 @@ export const verifyPayment = async (event) => {
     event.event === "payment.success" ||
     event.event === "transfer.success"
   ) {
+    console.log(`[verifyPayment] Processing Success for ${tx_ref}`);
+
+    // --- NEW SECURITY CHECK: AMOUNT MATCHING ---
+    const paidAmount = Number(amount);
+    const expectedAmount = Number(transaction.amount);
+
+    if (paidAmount < expectedAmount) {
+        console.error(`[Fraud Alert] User paid ₦${paidAmount} but expected ₦${expectedAmount}. Blocking credit.`);
+        await updateTransactionStatus(tx_ref, "failed"); 
+        return { success: false, message: "Amount mismatch: Payment declined." };
+    }
+    // -------------------------------------------
+
     await updateTransactionStatus(tx_ref, "success");
 
     const user = await findUserById(transaction.user_id);
-    const newBalance = Number(user.balance) + Number(amount);
+    if (!user) {
+        console.error(`[verifyPayment] User not found for transaction ${tx_ref}`);
+        return { success: false, message: "User not found" };
+    }
+
+    // SAFE MATH: Use the trusted expectedAmount for the balance update
+    const newBalance = Number(user.balance) + expectedAmount;
+    
+    console.log(`[verifyPayment] Updating Balance for ${user.email}. Old: ${user.balance}, New: ${newBalance}`);
+    
     await updateUserBalance(user.id, newBalance);
   } 
   else if (status === "failed") {
