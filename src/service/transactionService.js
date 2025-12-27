@@ -323,12 +323,26 @@ export const getUserTransactions = async (userId) => {
     let description = '';
     let activityType = tx.type;
     switch(tx.type) {
-      case 'deposit': description = `Deposit of ₦${Number(tx.amount).toLocaleString()}`; break;
-      case 'withdrawal': description = `Withdrawal of ₦${Number(tx.amount).toLocaleString()}${tx.status === 'pending' ? ' (Pending)' : tx.status === 'success' ? ' (Approved)' : ' (Failed)'}`; break;
-      case 'investment': description = `Investment of ₦${Number(tx.amount).toLocaleString()}`; break;
-      case 'investment_roi': description = `Daily Investment ROI: ₦${Number(tx.amount).toLocaleString()}`; activityType = 'earning'; break;
-      case 'referral_bonus': description = `Referral Commission: ₦${Number(tx.amount).toLocaleString()}`; activityType = 'earning'; break;
-      default: description = `${tx.type}: ₦${Number(tx.amount).toLocaleString()}`;
+      // UPDATED: Added better description for Manual Pending Deposits
+      case 'deposit': 
+        description = `Manual Deposit (₦${Number(tx.amount).toLocaleString()}) - ${tx.status.toUpperCase()}`; 
+        break;
+      case 'withdrawal': 
+        description = `Withdrawal of ₦${Number(tx.amount).toLocaleString()}${tx.status === 'pending' ? ' (Pending)' : tx.status === 'success' ? ' (Approved)' : ' (Failed)'}`; 
+        break;
+      case 'investment': 
+        description = `Investment of ₦${Number(tx.amount).toLocaleString()}`; 
+        break;
+      case 'investment_roi': 
+        description = `Daily Investment ROI: ₦${Number(tx.amount).toLocaleString()}`; 
+        activityType = 'earning'; 
+        break;
+      case 'referral_bonus': 
+        description = `Referral Commission: ₦${Number(tx.amount).toLocaleString()}`; 
+        activityType = 'earning'; 
+        break;
+      default: 
+        description = `${tx.type}: ₦${Number(tx.amount).toLocaleString()}`;
     }
     return { ...tx, amount: Number(tx.amount), description, activityType, date: tx.created_at };
   });
