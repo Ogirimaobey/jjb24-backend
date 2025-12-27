@@ -12,10 +12,11 @@ import {
     getUserTransactions, 
     getUserWithdrawalTransactions, 
     getUserDepositTransactions,
-    createManualDeposit // <--- NEW SERVICE FUNCTION
+    createManualDeposit 
 } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
 import { getUserBalance, verifyWithdrawalPin } from '../service/userService.js';
+import pool from '../config/database.js'; // Added for the Admin Query
 
 const router = express.Router();
 
@@ -39,9 +40,10 @@ const storage = new CloudinaryStorage({
 const upload = multer({ storage: storage });
 
 // ==========================================
-// 2. NEW ROUTE: MANUAL DEPOSIT (Plan B)
+// 2. MANUAL DEPOSIT ROUTES
 // ==========================================
-// User uploads a screenshot -> We save it -> You confirm it later
+
+// User uploads a screenshot
 router.post('/deposit/manual', verifyToken, upload.single('receipt'), async (req, res) => {
     try {
         console.log('[Manual Deposit] Request received.');
@@ -49,7 +51,6 @@ router.post('/deposit/manual', verifyToken, upload.single('receipt'), async (req
         const userId = req.user.id;
         const file = req.file;
 
-        // Validation
         if (!file) {
             return res.status(400).json({ success: false, message: "Please upload the payment receipt screenshot." });
         }
@@ -58,8 +59,6 @@ router.post('/deposit/manual', verifyToken, upload.single('receipt'), async (req
         }
 
         console.log(`[Manual Deposit] User: ${userId}, Amount: ${amount}, File: ${file.path}`);
-
-        // Call Service to Save to DB (We will add this function to Service next)
         const result = await createManualDeposit(userId, amount, file.path);
 
         res.status(200).json({ 
@@ -70,16 +69,36 @@ router.post('/deposit/manual', verifyToken, upload.single('receipt'), async (req
 
     } catch (err) {
         console.error("[Manual Deposit] Error:", err.message);
-        res.status(500).json({ success: false, message: "Failed to submit receipt. Please try again." });
+        res.status(500).json({ success: false, message: "Failed to submit receipt." });
+    }
+});
+
+// --- NEW: ADMIN ROUTE TO FETCH PENDING RECEIPTS ---
+// This provides the data for your Admin Dashboard "Receipt Watch" table
+router.get('/deposits/pending', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        // We join with the users table to get the email for your Quick Fund form
+        const query = `
+            SELECT t.*, u.email, u.full_name 
+            FROM transactions t 
+            JOIN users u ON t.user_id = u.id 
+            WHERE t.receipt_url IS NOT NULL AND t.status = 'pending'
+            ORDER BY t.created_at DESC
+        `;
+        const { rows } = await pool.query(query);
+        res.status(200).json({ success: true, deposits: rows });
+    } catch (err) {
+        console.error("[Admin Pending Deposits] Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to fetch pending deposits." });
     }
 });
 
 
 // ==========================================
-// 3. EXISTING ROUTES (Keep these for History/Withdrawals)
+// 3. EXISTING ROUTES
 // ==========================================
 
-// User initiates payment (Flutterwave - Currently Blocked but kept for future)
+// User initiates payment (Flutterwave)
 router.post('/initialize', verifyToken, async (req, res) => {
   try {
     const {amount} = req.body;
@@ -91,7 +110,7 @@ router.post('/initialize', verifyToken, async (req, res) => {
   }
 });
 
-// Force Check Route (Still useful for older stuck transactions)
+// Force Check Route
 router.post('/confirm', verifyToken, async (req, res) => {
     try {
         const { reference } = req.body;
