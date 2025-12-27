@@ -9,7 +9,7 @@ import {
     getAllTransactionsByUserId, 
     getWithdrawalTransactionsByUserId, 
     getDepositTransactionsByUserId, 
-    getPendingWithdrawals 
+    getPendingWithdrawals  
 } from "../repositories/transactionRepository.js";
 import { findUserById } from "../repositories/userRepository.js"; 
 import { getAllInvestmentsByUserId } from "../repositories/investmentRepository.js";
