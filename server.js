@@ -20,7 +20,10 @@ dotenv.config();
 
 const app = express();
 app.use(cookieParser());
-app.use(express.json());
+
+// FIX 1: INCREASE LIMITS FOR IMAGE UPLOADS
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // =====================================================
 // --- THE FIX: ALLOW 'PATCH' (BLOCK) AND 'PUT' (EDIT) ---
@@ -28,7 +31,7 @@ app.use(express.json());
 app.use(cors({ 
     origin: true, 
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'], // <--- ADDED THIS LINE
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -40,14 +43,24 @@ app.use('/api/items', itemRoutes);
 app.use('/api/investments', investmentRoute);
 
 // --- 3. REPAIR UTILITIES ---
+
+// NEW: FIX TRANSACTIONS TABLE (Adds Receipt Column)
+app.get('/fix-transactions-table', async (req, res) => {
+    try {
+        const client = await pool.connect();
+        // This ensures the database can store the screenshot links we just set up
+        await client.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS receipt_url TEXT;`);
+        client.release();
+        res.send(`<h1 style="color:green">✅ DATABASE UPDATED!</h1><p>The 'receipt_url' column is now active. Manual receipts will now save correctly.</p>`);
+    } catch (error) {
+        res.status(500).send(`<h1 style="color:red">❌ FAILED: ${error.message}</h1>`);
+    }
+});
+
 app.get('/fix-vip-table', async (req, res) => {
     try {
         const client = await pool.connect();
-        
-        // 1. Force Delete the old/broken table
         await client.query(`DROP TABLE IF EXISTS casper_vip CASCADE;`);
-        
-        // 2. Re-Create it with the CORRECT columns
         await client.query(`
             CREATE TABLE casper_vip (
                 id SERIAL PRIMARY KEY,   
@@ -62,7 +75,6 @@ app.get('/fix-vip-table', async (req, res) => {
             );
         `);
 
-        // 3. Insert the Products (Seeding)
         const seedQuery = `
           INSERT INTO casper_vip (id, name, price, daily_earnings, duration_days, total_returns, image)
           VALUES 
@@ -72,25 +84,12 @@ app.get('/fix-vip-table', async (req, res) => {
           (104, 'CASPER4', 3000000, 120000, 30, 3600000, 'https://placehold.co/300x200/1a1a1a/ffffff?text=CASPER4');
         `;
         await client.query(seedQuery);
-        
-        // 4. Update Regular Items table while we are at it
         await client.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS duration INTEGER DEFAULT 30;`);
-
         client.release();
-        
-        res.send(`
-            <h1 style="color:green">✅ REPAIR SUCCESSFUL!</h1>
-            <p>1. Old VIP table deleted.</p>
-            <p>2. New VIP table created.</p>
-            <p>3. Products 101-104 inserted.</p>
-            <p>4. Regular Items 'duration' column checked.</p>
-            <hr>
-            <h3>👉 You can now go back to the app and Invest.</h3>
-        `);
-
+        res.send(`<h1 style="color:green">✅ REPAIR SUCCESSFUL!</h1>`);
     } catch (error) {
         console.error(error);
-        res.send(`<h1 style="color:red">❌ ERROR: ${error.message}</h1><pre>${JSON.stringify(error, null, 2)}</pre>`);
+        res.send(`<h1 style="color:red">❌ ERROR: ${error.message}</h1>`);
     }
 });
 
