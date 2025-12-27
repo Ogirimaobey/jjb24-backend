@@ -11,6 +11,9 @@ import {
   setWithdrawalPin, 
   getUserDashboardData,
   adminFundUser,
+  // --- ADDED FOR SECURITY MANAGEMENT ---
+  changeUserPassword,    // <--- NEW
+  resetWithdrawalPin,    // <--- NEW
   // --- ADMIN IMPORTS ---
   getAllUsers,      
   updateUserStatus, 
@@ -73,7 +76,6 @@ router.get("/balance", verifyToken, async (req, res) => {
 router.post('/set-pin', verifyToken, async (req, res) => {
   try {
     const { pin } = req.body;
-    // req.user.id comes from the verifyToken middleware
     const result = await setWithdrawalPin(req.user.id, pin);
     res.status(200).json(result);
   } catch (error) {
@@ -81,7 +83,31 @@ router.post('/set-pin', verifyToken, async (req, res) => {
   }
 });
 
-// --- NEW: GET DASHBOARD DATA (Balance + Active Investments with Days Left) ---
+// --- ADDED: RESET WITHDRAWAL PIN ---
+// This handles cases where a user wants to change their existing PIN
+router.post('/reset-pin', verifyToken, async (req, res) => {
+  try {
+    const { newPin } = req.body;
+    const result = await resetWithdrawalPin(req.user.id, newPin);
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// --- ADDED: CHANGE LOGIN PASSWORD ---
+// Requires current password to verify ownership
+router.post('/change-password', verifyToken, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const result = await changeUserPassword(req.user.id, oldPassword, newPassword);
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// --- NEW: GET DASHBOARD DATA ---
 router.get('/dashboard', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -147,7 +173,7 @@ router.get('/user_profile', verifyToken, async (req, res) => {
 });
 
 
-// Get user earnings summary (today, yesterday, total)
+// Get user earnings summary
 router.get('/earnings-summary', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -197,7 +223,7 @@ router.get('/team', verifyToken, async (req, res) => {
   }
 });
 
-// Get unified reward history (investment ROI + referral bonuses)
+// Get unified reward history
 router.get('/reward-history', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -210,7 +236,7 @@ router.get('/reward-history', verifyToken, async (req, res) => {
   }
 });
 
-// --- NEW: ADMIN FUND WALLET (Owner Feature) ---
+// --- NEW: ADMIN FUND WALLET ---
 router.post('/admin/fund', async (req, res) => {
   try {
     const { email, amount } = req.body;
@@ -238,11 +264,11 @@ router.get('/admin/users', async (req, res) => {
   }
 });
 
-// 2. Suspend/Block User (THIS FIXES THE 404)
+// 2. Suspend/Block User
 router.patch('/admin/users/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, reason } = req.body; // status: 'active', 'suspended', 'blocked'
+    const { status, reason } = req.body; 
     const result = await updateUserStatus(id, status, reason);
     res.status(200).json(result);
   } catch (error) {
@@ -254,7 +280,7 @@ router.patch('/admin/users/:id/status', async (req, res) => {
 router.put('/admin/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body; // { full_name, email, phone_number }
+    const updateData = req.body; 
     const result = await adminUpdateUser(id, updateData);
     res.status(200).json(result);
   } catch (error) {
