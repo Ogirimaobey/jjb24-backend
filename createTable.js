@@ -1,6 +1,6 @@
 import pool from './src/config/database.js';
 
-// 1. UPDATED: Added referrer_id to primary table creation
+// 1. PRIMARY TABLE CREATION
 const createUserTable = `
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -26,7 +26,6 @@ const createTableAdmin = `
   );
 `;
 
-// UPDATED: Increased precision to NUMERIC(20, 2) for large VIP transactions
 const createTransactionsTable = `
   CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
@@ -80,7 +79,7 @@ const alterTableInvestments = `
   );
 `;
 
-// UPDATED: Added Admin Block/Suspend Columns
+// UPDATED: Added withdrawal_pin column
 const alterTableUsers = `
   ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE,
@@ -93,26 +92,27 @@ const alterTableUsers = `
   ADD COLUMN IF NOT EXISTS otp_code VARCHAR(10),  
   ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP,
   ADD COLUMN IF NOT EXISTS referrer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  -- NEW: Support for Admin Block/Suspend
   ADD COLUMN IF NOT EXISTS account_status VARCHAR(20) DEFAULT 'active',
   ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS block_reason TEXT,
+  -- NEW: Support for Transaction PIN Security
+  ADD COLUMN IF NOT EXISTS withdrawal_pin TEXT,
   DROP COLUMN IF EXISTS type;
 `;
 
-// UPDATED: Fixed Crash by adding 'welcome_bonus' to allowed list
+// UPDATED: Added receipt_url for manual deposits
 const alterTableTransactions = `
   ALTER TABLE transactions
     ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'deposit',
     ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100),
     ADD COLUMN IF NOT EXISTS account_number VARCHAR(20),
-    ADD COLUMN IF NOT EXISTS account_name VARCHAR(100);
+    ADD COLUMN IF NOT EXISTS account_name VARCHAR(100),
+    -- NEW: Column for Manual Receipt Screenshots
+    ADD COLUMN IF NOT EXISTS receipt_url TEXT;
   
-  -- 1. Remove the old strict rule
   ALTER TABLE transactions
     DROP CONSTRAINT IF EXISTS transactions_type_check;
   
-  -- 2. Add the NEW rule that allows 'admin_credit' AND 'welcome_bonus'
   ALTER TABLE transactions
     ADD CONSTRAINT transactions_type_check 
     CHECK (type IN ('deposit', 'withdrawal', 'investment', 'investment_roi', 'referral_bonus', 'admin_credit', 'welcome_bonus'));
