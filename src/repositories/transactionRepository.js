@@ -1,10 +1,11 @@
 import pool from '../config/database.js';
 
-export const createTransaction = async (userId, amount, reference, type = 'deposit') => {
+// UPDATED: Standard Transaction Creator (Added receipt_url support)
+export const createTransaction = async (userId, amount, reference, type = 'deposit', receiptUrl = null) => {
   const result = await pool.query(
-    `INSERT INTO transactions (user_id, amount, reference, status, type)
-     VALUES ($1, $2, $3, 'success', $4) RETURNING *`,
-    [userId, amount, reference, type]
+    `INSERT INTO transactions (user_id, amount, reference, status, type, receipt_url)
+     VALUES ($1, $2, $3, 'success', $4, $5) RETURNING *`,
+    [userId, amount, reference, type, receiptUrl]
   );
   return result.rows[0];
 };
@@ -72,17 +73,6 @@ export const findTransactionByReference = async (reference) => {
   return result.rows[0];
 };
 
-// export const updateTransactionStatus = async (reference, status) => {
-//   await pool.query(
-//     'UPDATE transactions SET status = $1 WHERE reference = $2',
-//     [status, reference]
-//   );
-
-// };
-
-
-
-
 export const updateTransactionStatus = async (tx_ref, status) => {
   try {
     const result = await pool.query(
@@ -130,6 +120,7 @@ export const getPendingWithdrawals = async () => {
   return rows;
 };
 
+// UPDATED: Added receipt_url to history for Admin and User visibility
 export const getAllTransactionsByUserId = async (userId) => {
   const query = `
     SELECT 
@@ -140,7 +131,8 @@ export const getAllTransactionsByUserId = async (userId) => {
       type,
       created_at,
       bank_name,
-      account_name
+      account_name,
+      receipt_url
     FROM transactions 
     WHERE user_id = $1 
     ORDER BY created_at DESC
@@ -166,6 +158,7 @@ export const getWithdrawalTransactionsByUserId = async (userId) => {
   return rows;
 };
 
+// UPDATED: Added receipt_url here too
 export const getDepositTransactionsByUserId = async (userId) => {
   const query = `
     SELECT 
@@ -174,11 +167,23 @@ export const getDepositTransactionsByUserId = async (userId) => {
       status,
       reference,
       type,
-      created_at
+      created_at,
+      receipt_url
     FROM transactions 
     WHERE user_id = $1 AND type = 'deposit'
     ORDER BY created_at DESC
   `;
   const { rows } = await pool.query(query, [userId]);
   return rows;
+};
+
+// NEW: Helper specifically for the Manual Upload Feature
+export const createManualDepositRecord = async (userId, amount, reference, receiptUrl) => {
+  const query = `
+    INSERT INTO transactions (user_id, amount, reference, status, type, receipt_url, created_at)
+    VALUES ($1, $2, $3, 'pending', 'deposit', $4, NOW())
+    RETURNING *;
+  `;
+  const { rows } = await pool.query(query, [userId, amount, reference, receiptUrl]);
+  return rows[0];
 };
