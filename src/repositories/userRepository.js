@@ -3,8 +3,8 @@ import pool from '../config/database.js';
 // 1. Insert User (Standard)
 export const insertUser = async ({ fullName, phone, email, password, referralCode, referrerId, ownReferralCode, isAdmin = false, otpCode, otpExpiresAt}) => {
   const q = `INSERT INTO users (full_name, phone_number, email, password_hash, referral_code_used, referrer_id, own_referral_code, is_admin, otp_code, otp_expires_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *;`;
-   
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *;`;
+    
   const vals = [fullName, phone, email || null, password, referralCode || null, referrerId || null, ownReferralCode || null, isAdmin, otpCode, otpExpiresAt];
   const { rows } = await pool.query(q, vals);
   return rows[0];
@@ -45,17 +45,17 @@ export const createTransaction = async ({ userId, amount, type, status = 'succes
   return rows[0];
 };
 
-// --- NEW: PIN MANAGEMENT (Security) ---
+// --- FIXED: PIN MANAGEMENT (Changed transaction_pin to withdrawal_pin to match service/main.js) ---
 export const setUserPin = async (userId, hashedPin) => {
-  const query = `UPDATE users SET transaction_pin = $1 WHERE id = $2 RETURNING id`;
+  const query = `UPDATE users SET withdrawal_pin = $1 WHERE id = $2 RETURNING id`;
   const { rows } = await pool.query(query, [hashedPin, userId]);
   return rows[0];
 };
 
 export const getUserPin = async (userId) => {
-  const query = `SELECT transaction_pin FROM users WHERE id = $1`;
+  const query = `SELECT withdrawal_pin FROM users WHERE id = $1`;
   const { rows } = await pool.query(query, [userId]);
-  return rows[0]?.transaction_pin;
+  return rows[0]?.withdrawal_pin;
 };
 
 // --- NEW: FETCH ACTIVE INVESTMENTS (For Days Left Timer) ---
