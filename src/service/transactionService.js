@@ -323,9 +323,13 @@ export const getUserTransactions = async (userId) => {
     let description = '';
     let activityType = tx.type;
     switch(tx.type) {
-      // UPDATED: Added better description for Manual Pending Deposits
       case 'deposit': 
-        description = `Manual Deposit (₦${Number(tx.amount).toLocaleString()}) - ${tx.status.toUpperCase()}`; 
+        // Logic Update: Distinguish between pending manual and successful ones
+        if (tx.status === 'pending') {
+            description = `Pending Manual Deposit: ₦${Number(tx.amount).toLocaleString()} (Awaiting Approval)`; 
+        } else {
+            description = `Deposit of ₦${Number(tx.amount).toLocaleString()} (${tx.status.toUpperCase()})`; 
+        }
         break;
       case 'withdrawal': 
         description = `Withdrawal of ₦${Number(tx.amount).toLocaleString()}${tx.status === 'pending' ? ' (Pending)' : tx.status === 'success' ? ' (Approved)' : ' (Failed)'}`; 
