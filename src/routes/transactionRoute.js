@@ -54,11 +54,15 @@ router.post('/deposit/manual', verifyToken, upload.single('receipt'), async (req
         if (!file) {
             return res.status(400).json({ success: false, message: "Please upload the payment receipt screenshot." });
         }
-        if (!amount || amount < 500) {
-             return res.status(400).json({ success: false, message: "Valid amount is required (Min: 500)." });
+        
+        // Ensure amount is valid
+        if (!amount || Number(amount) < 500) {
+             return res.status(400).json({ success: false, message: "Valid amount is required (Min: ₦500)." });
         }
 
         console.log(`[Manual Deposit] User: ${userId}, Amount: ${amount}, File: ${file.path}`);
+        
+        // This saves the transaction with the Cloudinary image link
         const result = await createManualDeposit(userId, amount, file.path);
 
         res.status(200).json({ 
@@ -69,11 +73,13 @@ router.post('/deposit/manual', verifyToken, upload.single('receipt'), async (req
 
     } catch (err) {
         console.error("[Manual Deposit] Error:", err.message);
-        res.status(500).json({ success: false, message: "Failed to submit receipt." });
+        // Special message to help you debug during deployment
+        const errorMsg = err.message.includes('Cloudinary') ? "Cloudinary API Keys missing in Render settings." : "Failed to submit receipt.";
+        res.status(500).json({ success: false, message: errorMsg });
     }
 });
 
-// --- NEW: ADMIN ROUTE TO FETCH PENDING RECEIPTS ---
+// --- ADMIN ROUTE TO FETCH PENDING RECEIPTS ---
 // This provides the data for your Admin Dashboard "Receipt Watch" table
 router.get('/deposits/pending', verifyToken, verifyAdmin, async (req, res) => {
     try {
@@ -89,13 +95,13 @@ router.get('/deposits/pending', verifyToken, verifyAdmin, async (req, res) => {
         res.status(200).json({ success: true, deposits: rows });
     } catch (err) {
         console.error("[Admin Pending Deposits] Error:", err.message);
-        res.status(500).json({ success: false, message: "Failed to fetch pending deposits." });
+        res.status(500).json({ success: false, message: "Failed to fetch pending deposits. Ensure DB is fixed." });
     }
 });
 
 
 // ==========================================
-// 3. EXISTING ROUTES
+// 3. EXISTING FLUTTERWAVE & HISTORY ROUTES
 // ==========================================
 
 // User initiates payment (Flutterwave)
@@ -151,7 +157,10 @@ router.post("/withdraw", verifyToken, async (req, res) => {
   try {
     const { amount, bank_name, account_number, account_name, pin } = req.body;
     if (!pin) return res.status(400).json({ success: false, message: "Withdrawal PIN is required" });
+    
+    // Safety check for PIN
     await verifyWithdrawalPin(req.user.id, pin);
+    
     const result = await requestWithdrawal(req.user.id, amount, bank_name, account_number, account_name);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
