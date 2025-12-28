@@ -143,11 +143,15 @@ export const verifyUserOtp = async (email, otp) => {
  };
 };
 
-// --- LOGIN USER ---
+// --- LOGIN USER (FIXED STABILITY) ---
 export const loginUser = async ({ email, phone, password }) => {
  let user;
- if (email) user = await findUserByEmail(email);
- else if (phone) user = await findUserByPhone(phone);
+ // Logic fix: Ensure we don't try to find a user with an empty string
+ if (email && email.trim() !== "") {
+     user = await findUserByEmail(email);
+ } else if (phone && phone.trim() !== "") {
+     user = await findUserByPhone(phone);
+ }
 
  if (!user) throw new Error('Invalid credentials');
 
@@ -164,7 +168,7 @@ export const loginUser = async ({ email, phone, password }) => {
  return { token, user: { id: user.id, name: user.full_name, email: user.email, role: user.role } };
 };
 
-// --- GET BALANCE ---
+// --- GET BALANCE (ADDED PIN STATUS FOR FRONTEND BUTTONS) ---
 export const getUserBalance = async (userId) => {
  const user = await findUserById(userId);
  if (!user) throw new Error('User not found');
@@ -176,11 +180,13 @@ export const getUserBalance = async (userId) => {
    user.own_referral_code = newCode;
  }
 
+ // Logic Fix: Return 'has_pin' so main.js knows which button to show
  return { 
    balance: Number(user.balance), 
    full_name: user.full_name,
    own_referral_code: user.own_referral_code,
-   phone_number: user.phone_number
+   phone_number: user.phone_number,
+   has_pin: user.withdrawal_pin ? true : false
  };
 };
 
@@ -192,7 +198,7 @@ export const setWithdrawalPin = async (userId, rawPin) => {
  return { success: true, message: "Security PIN set successfully" };
 };
 
-// --- ADDED: RESET WITHDRAWAL PIN ---
+// --- RESET WITHDRAWAL PIN ---
 export const resetWithdrawalPin = async (userId, newPin) => {
   if (!/^\d{4}$/.test(newPin)) throw new Error("New PIN must be exactly 4 digits");
   const hashedPin = await bcrypt.hash(newPin, 10);
@@ -200,7 +206,7 @@ export const resetWithdrawalPin = async (userId, newPin) => {
   return { success: true, message: "Withdrawal PIN has been reset successfully" };
 };
 
-// --- ADDED: CHANGE LOGIN PASSWORD ---
+// --- CHANGE LOGIN PASSWORD ---
 export const changeUserPassword = async (userId, oldPassword, newPassword) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
@@ -369,13 +375,13 @@ export const adminFundUser = async (email, amount) => {
    return { success: true, newBalance };
 };
 
-// --- GET ALL USERS ---
+// --- GET ALL USERS (ADDED RECEIPT_URL FOR ADMIN PROOF) ---
 export const getAllUsers = async () => {
    const userQuery = `SELECT * FROM users ORDER BY created_at DESC`;
    const { rows: users } = await pool.query(userQuery);
 
    const depositQuery = `
-       SELECT user_id, SUM(amount) as total 
+       SELECT user_id, SUM(amount) as total, MAX(receipt_url) as latest_receipt
        FROM transactions 
        WHERE type = 'deposit' AND status = 'success' 
        GROUP BY user_id
@@ -383,11 +389,17 @@ export const getAllUsers = async () => {
    const { rows: deposits } = await pool.query(depositQuery);
 
    const depositMap = {};
-   deposits.forEach(d => { depositMap[d.user_id] = Number(d.total); });
+   deposits.forEach(d => { 
+       depositMap[d.user_id] = { 
+           total: Number(d.total), 
+           receipt: d.latest_receipt 
+       }; 
+   });
 
    const usersWithDeposits = users.map(user => ({
        ...user,
-       total_deposited: depositMap[user.id] || 0
+       total_deposited: depositMap[user.id]?.total || 0,
+       receipt_url: depositMap[user.id]?.receipt || null
    }));
 
    return usersWithDeposits;
