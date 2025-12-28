@@ -51,8 +51,12 @@ export const verifyToken = (req, res, next) => {
 
 
 export const verifyAdmin = (req, res, next) => {
-  if (!req.user || req.user.role !== "admin") {
+  // FIXED: Check both 'role' and 'is_admin' boolean to match your userRepository.js
+  if (!req.user || (req.user.role !== "admin" && req.user.is_admin !== true)) {
+    console.warn(`[verifyAdmin] Access denied for User ID: ${req.user?.id}`);
     return res.status(403).json({ message: "Access forbidden: Admins only" });
   }
+  
+  console.log(`[verifyAdmin] Admin access granted for User ID: ${req.user.id}`);
   next();
 };
