@@ -46,19 +46,16 @@ const sendOtpEmail = async (to, otp) => {
  });
 };
 
-// --- NEW: FORGOT PASSWORD LOGIC ---
+// --- NEW: FORGOT PASSWORD SERVICE (ADDED WITHOUT CHANGING ANYTHING ELSE) ---
 export const forgotPassword = async (email) => {
     const user = await findUserByEmail(email);
     if (!user) throw new Error("User with this email not found");
 
-    // 1. Generate a temporary random password (8 characters)
     const tempPassword = Math.random().toString(36).slice(-8); 
     const passwordHash = await bcrypt.hash(tempPassword, 10);
 
-    // 2. Update the user's password in the database
     await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, user.id]);
 
-    // 3. Send the email with temporary password
     const transporter = nodemailer.createTransport({
         host: "smtp.gmail.com",
         port: 587,
@@ -398,7 +395,7 @@ export const getUserProfile = async (userId) => {
  return user;
 };
 
-// --- ADMIN FUND FUNCTION ---
+// --- ADMIN FUNDING FUNCTION ---
 export const adminFundUser = async (email, amount) => {
    const user = await findUserByEmail(email);
    if (!user) throw new Error("User email not found");
