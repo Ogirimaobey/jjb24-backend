@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs'; // Ensure this matches your package.json
 import jwt from 'jsonwebtoken';
 import crypto from "crypto";
 import nodemailer from "nodemailer";
@@ -46,7 +46,7 @@ const sendOtpEmail = async (to, otp) => {
  });
 };
 
-// --- NEW: FORGOT PASSWORD SERVICE (ADDED WITHOUT CHANGING ANYTHING ELSE) ---
+// --- NEW: FORGOT PASSWORD SERVICE ---
 export const forgotPassword = async (email) => {
     const user = await findUserByEmail(email);
     if (!user) throw new Error("User with this email not found");
@@ -94,40 +94,32 @@ export const registerUser = async (data) => {
 
   const { fullName, phone, email, password, referralCode } = data;
 
-  // 1. Check duplicates
   const existingEmail = await findUserByEmail(email);
   if (existingEmail) throw new Error('Email already registered');
   
   const existingPhone = await findUserByPhone(phone);
   if (existingPhone) throw new Error('Phone number already registered');
 
-  // 2. Resolve Referral
   let referrerId = null;
   if (referralCode && referralCode.trim() !== "") {
     const referrer = await findUserByReferralCode(referralCode);
     if (referrer) {
       referrerId = referrer.id;
-      console.log(`[Register] User linked to referrer: ${referrer.full_name} (ID: ${referrer.id})`);
-      
-      // Increment referrer count
       await client.query('UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE id = $1', [referrerId]);
     }
   }
 
-  // 3. Security & Codes
   const passwordHash = await bcrypt.hash(password, 10);
   const ownCode = generateReferralCode();
   const otp = crypto.randomInt(100000, 999999).toString();
   const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-  // 4. Send Email
   try {
     await sendOtpEmail(email, otp);
   } catch (emailErr) {
     console.error("Failed to send email, but proceeding with registration:", emailErr);
   }
 
-  // 5. Insert User
   const queryText = `
     INSERT INTO users (full_name, email, phone_number, password_hash, balance, referrer_id, own_referral_code, referral_count, otp_code, otp_expires_at, is_verified)
     VALUES ($1, $2, $3, $4, 0, $5, $6, 0, $7, $8, FALSE)
@@ -161,10 +153,8 @@ export const verifyUserOtp = async (email, otp) => {
  if (!user.otp_code || user.otp_code !== otp) throw new Error("Invalid OTP");
  if (new Date() > new Date(user.otp_expires_at)) throw new Error("OTP expired");
 
- // 1. Mark Verified
  await updateUserVerification(email, true);
 
- // 2. Pay Referee (New User Welcome Bonus) - ₦200
  const welcomeBonus = 200.0;
  const newBalance = Number(user.balance) + welcomeBonus;
  await updateUserBalance(user.id, newBalance);
@@ -183,10 +173,9 @@ export const verifyUserOtp = async (email, otp) => {
  };
 };
 
-// --- LOGIN USER (FIXED STABILITY) ---
+// --- LOGIN USER ---
 export const loginUser = async ({ email, phone, password }) => {
  let user;
- // Logic fix: Ensure we don't try to find a user with an empty string
  if (email && email.trim() !== "") {
      user = await findUserByEmail(email);
  } else if (phone && phone.trim() !== "") {
@@ -195,7 +184,6 @@ export const loginUser = async ({ email, phone, password }) => {
 
  if (!user) throw new Error('Invalid credentials');
 
- // --- CHECK IF BLOCKED ---
  if (user.is_blocked || user.account_status === 'suspended' || user.account_status === 'blocked') {
      throw new Error(`Account ${user.account_status || 'blocked'}: ${user.block_reason || 'Contact Support'}`);
  }
@@ -208,19 +196,17 @@ export const loginUser = async ({ email, phone, password }) => {
  return { token, user: { id: user.id, name: user.full_name, email: user.email, role: user.role } };
 };
 
-// --- GET BALANCE (ADDED PIN STATUS FOR FRONTEND BUTTONS) ---
+// --- GET BALANCE ---
 export const getUserBalance = async (userId) => {
  const user = await findUserById(userId);
  if (!user) throw new Error('User not found');
  
- // Self-Heal: Generate code if missing
  if (!user.own_referral_code) {
   const newCode = generateReferralCode();
   await pool.query("UPDATE users SET own_referral_code = $1 WHERE id = $2", [newCode, userId]);
   user.own_referral_code = newCode;
  }
 
- // Logic Fix: Return 'has_pin' so main.js knows which button to show
  return { 
   balance: Number(user.balance), 
   full_name: user.full_name,
@@ -251,11 +237,9 @@ export const changeUserPassword = async (userId, oldPassword, newPassword) => {
   const user = await findUserById(userId);
   if (!user) throw new Error("User not found");
 
-  // Verify old password
   const isMatch = await bcrypt.compare(oldPassword, user.password_hash);
   if (!isMatch) throw new Error("Current password is incorrect");
 
-  // Hash and Update new password
   const newHash = await bcrypt.hash(newPassword, 10);
   await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, userId]);
 
@@ -276,7 +260,6 @@ export const verifyWithdrawalPin = async (userId, rawPin) => {
 export const distributeInvestmentCommissions = async (investorId, amount) => {
  const client = await pool.connect();
  try {
-  // Level 1
   const userRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [investorId]);
   const parentId = userRes.rows[0]?.referrer_id;
 
@@ -285,7 +268,6 @@ export const distributeInvestmentCommissions = async (investorId, amount) => {
     await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm1, parentId]);
     await createReferralBonusTransaction(parentId, comm1, investorId, null, client);
 
-    // Level 2
     const parentRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [parentId]);
     const grandParentId = parentRes.rows[0]?.referrer_id;
 
@@ -298,7 +280,6 @@ export const distributeInvestmentCommissions = async (investorId, amount) => {
         [grandParentId, comm2, ref2]
       );
 
-      // Level 3
       const grandParentRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [grandParentId]);
       const greatGrandParentId = grandParentRes.rows[0]?.referrer_id;
 
@@ -415,7 +396,7 @@ export const adminFundUser = async (email, amount) => {
    return { success: true, newBalance };
 };
 
-// --- GET ALL USERS (ADDED RECEIPT_URL FOR ADMIN PROOF) ---
+// --- GET ALL USERS ---
 export const getAllUsers = async () => {
    const userQuery = `SELECT * FROM users ORDER BY created_at DESC`;
    const { rows: users } = await pool.query(userQuery);
