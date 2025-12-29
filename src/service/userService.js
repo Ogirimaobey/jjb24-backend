@@ -29,86 +29,129 @@ const generateReferralCode = () => {
 // --- HELPER: Send OTP Email ---
 const sendOtpEmail = async (to, otp) => {
  const transporter = nodemailer.createTransport({
-   host: "smtp.gmail.com",
-   port: 587,
-   secure: false,
-   auth: {
-     user: process.env.MAIL_USER,
-     pass: process.env.MAIL_PASS,
-   },
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.MAIL_USER,
+    pass: process.env.MAIL_PASS,
+  },
  });
 
  await transporter.sendMail({
-   from: `"JJB24" <${process.env.MAIL_USER}>`,
-   to,
-   subject: "Verify Your Email - JJB24",
-   html: `<p>Your verification code is <b>${otp}</b>. It expires in 10 minutes.</p>`,
+  from: `"JJB24" <${process.env.MAIL_USER}>`,
+  to,
+  subject: "Verify Your Email - JJB24",
+  html: `<p>Your verification code is <b>${otp}</b>. It expires in 10 minutes.</p>`,
  });
+};
+
+// --- NEW: FORGOT PASSWORD LOGIC ---
+export const forgotPassword = async (email) => {
+    const user = await findUserByEmail(email);
+    if (!user) throw new Error("User with this email not found");
+
+    // 1. Generate a temporary random password (8 characters)
+    const tempPassword = Math.random().toString(36).slice(-8); 
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    // 2. Update the user's password in the database
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, user.id]);
+
+    // 3. Send the email with temporary password
+    const transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 587,
+        secure: false,
+        auth: {
+            user: process.env.MAIL_USER,
+            pass: process.env.MAIL_PASS,
+        },
+    });
+
+    await transporter.sendMail({
+        from: `"JJB24 Security" <${process.env.MAIL_USER}>`,
+        to: email,
+        subject: "Temporary Password - JJB24",
+        html: `
+            <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                <h2 style="color: #6a0dad;">Password Reset Request</h2>
+                <p>We received a request to reset your password for JJB24.</p>
+                <p>Your temporary login password is: <b style="font-size: 18px; color: #111;">${tempPassword}</b></p>
+                <p style="background: #fff4e5; padding: 10px; border-radius: 5px; color: #663c00;">
+                    <b>Important:</b> Please login immediately and change this password from your profile settings.
+                </p>
+                <p>If you did not request this, please secure your account immediately.</p>
+            </div>
+        `,
+    });
+
+    return { success: true, message: "Temporary password sent to email." };
 };
 
 // --- REGISTER USER ---
 export const registerUser = async (data) => {
  const client = await pool.connect();
  try {
-   await client.query('BEGIN');
+  await client.query('BEGIN');
 
-   const { fullName, phone, email, password, referralCode } = data;
+  const { fullName, phone, email, password, referralCode } = data;
 
-   // 1. Check duplicates
-   const existingEmail = await findUserByEmail(email);
-   if (existingEmail) throw new Error('Email already registered');
-   
-   const existingPhone = await findUserByPhone(phone);
-   if (existingPhone) throw new Error('Phone number already registered');
+  // 1. Check duplicates
+  const existingEmail = await findUserByEmail(email);
+  if (existingEmail) throw new Error('Email already registered');
+  
+  const existingPhone = await findUserByPhone(phone);
+  if (existingPhone) throw new Error('Phone number already registered');
 
-   // 2. Resolve Referral
-   let referrerId = null;
-   if (referralCode && referralCode.trim() !== "") {
-     const referrer = await findUserByReferralCode(referralCode);
-     if (referrer) {
-       referrerId = referrer.id;
-       console.log(`[Register] User linked to referrer: ${referrer.full_name} (ID: ${referrer.id})`);
-       
-       // Increment referrer count
-       await client.query('UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE id = $1', [referrerId]);
-     }
-   }
+  // 2. Resolve Referral
+  let referrerId = null;
+  if (referralCode && referralCode.trim() !== "") {
+    const referrer = await findUserByReferralCode(referralCode);
+    if (referrer) {
+      referrerId = referrer.id;
+      console.log(`[Register] User linked to referrer: ${referrer.full_name} (ID: ${referrer.id})`);
+      
+      // Increment referrer count
+      await client.query('UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE id = $1', [referrerId]);
+    }
+  }
 
-   // 3. Security & Codes
-   const passwordHash = await bcrypt.hash(password, 10);
-   const ownCode = generateReferralCode();
-   const otp = crypto.randomInt(100000, 999999).toString();
-   const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+  // 3. Security & Codes
+  const passwordHash = await bcrypt.hash(password, 10);
+  const ownCode = generateReferralCode();
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-   // 4. Send Email
-   try {
-     await sendOtpEmail(email, otp);
-   } catch (emailErr) {
-     console.error("Failed to send email, but proceeding with registration:", emailErr);
-   }
+  // 4. Send Email
+  try {
+    await sendOtpEmail(email, otp);
+  } catch (emailErr) {
+    console.error("Failed to send email, but proceeding with registration:", emailErr);
+  }
 
-   // 5. Insert User
-   const queryText = `
-     INSERT INTO users (full_name, email, phone_number, password_hash, balance, referrer_id, own_referral_code, referral_count, otp_code, otp_expires_at, is_verified)
-     VALUES ($1, $2, $3, $4, 0, $5, $6, 0, $7, $8, FALSE)
-     RETURNING *;
-   `;
-   const { rows } = await client.query(queryText, [fullName, email, phone, passwordHash, referrerId, ownCode, otp, otpExpires]);
-   const newUser = rows[0];
+  // 5. Insert User
+  const queryText = `
+    INSERT INTO users (full_name, email, phone_number, password_hash, balance, referrer_id, own_referral_code, referral_count, otp_code, otp_expires_at, is_verified)
+    VALUES ($1, $2, $3, $4, 0, $5, $6, 0, $7, $8, FALSE)
+    RETURNING *;
+  `;
+  const { rows } = await client.query(queryText, [fullName, email, phone, passwordHash, referrerId, ownCode, otp, otpExpires]);
+  const newUser = rows[0];
 
-   await client.query('COMMIT');
-   
-   return {
-     message: "User registered successfully. Check your email for OTP.",
-     email,
-     userId: newUser.id
-   };
+  await client.query('COMMIT');
+  
+  return {
+    message: "User registered successfully. Check your email for OTP.",
+    email,
+    userId: newUser.id
+  };
 
  } catch (error) {
-   await client.query('ROLLBACK');
-   throw error;
+  await client.query('ROLLBACK');
+  throw error;
  } finally {
-   client.release();
+  client.release();
  }
 };
 
@@ -137,9 +180,9 @@ export const verifyUserOtp = async (email, otp) => {
  );
 
  return {
-   success: true,
-   message: `OTP verified! ₦${welcomeBonus} welcome bonus added.`,
-   newBalance,
+  success: true,
+  message: `OTP verified! ₦${welcomeBonus} welcome bonus added.`,
+  newBalance,
  };
 };
 
@@ -175,18 +218,18 @@ export const getUserBalance = async (userId) => {
  
  // Self-Heal: Generate code if missing
  if (!user.own_referral_code) {
-   const newCode = generateReferralCode();
-   await pool.query("UPDATE users SET own_referral_code = $1 WHERE id = $2", [newCode, userId]);
-   user.own_referral_code = newCode;
+  const newCode = generateReferralCode();
+  await pool.query("UPDATE users SET own_referral_code = $1 WHERE id = $2", [newCode, userId]);
+  user.own_referral_code = newCode;
  }
 
  // Logic Fix: Return 'has_pin' so main.js knows which button to show
  return { 
-   balance: Number(user.balance), 
-   full_name: user.full_name,
-   own_referral_code: user.own_referral_code,
-   phone_number: user.phone_number,
-   has_pin: user.withdrawal_pin ? true : false
+  balance: Number(user.balance), 
+  full_name: user.full_name,
+  own_referral_code: user.own_referral_code,
+  phone_number: user.phone_number,
+  has_pin: user.withdrawal_pin ? true : false
  };
 };
 
@@ -236,47 +279,47 @@ export const verifyWithdrawalPin = async (userId, rawPin) => {
 export const distributeInvestmentCommissions = async (investorId, amount) => {
  const client = await pool.connect();
  try {
-   // Level 1
-   const userRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [investorId]);
-   const parentId = userRes.rows[0]?.referrer_id;
+  // Level 1
+  const userRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [investorId]);
+  const parentId = userRes.rows[0]?.referrer_id;
 
-   if (parentId) {
-     const comm1 = amount * 0.05;
-     await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm1, parentId]);
-     await createReferralBonusTransaction(parentId, comm1, investorId, null, client);
+  if (parentId) {
+    const comm1 = amount * 0.05;
+    await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm1, parentId]);
+    await createReferralBonusTransaction(parentId, comm1, investorId, null, client);
 
-     // Level 2
-     const parentRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [parentId]);
-     const grandParentId = parentRes.rows[0]?.referrer_id;
+    // Level 2
+    const parentRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [parentId]);
+    const grandParentId = parentRes.rows[0]?.referrer_id;
 
-     if (grandParentId) {
-       const comm2 = amount * 0.03;
-       await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm2, grandParentId]);
-       const ref2 = `REF-L2-${grandParentId}-${Date.now()}`;
-       await client.query(
-         `INSERT INTO transactions (user_id, amount, type, reference, status, description) VALUES ($1, $2, 'referral_bonus', $3, 'success', 'Level 2 Commission')`,
-         [grandParentId, comm2, ref2]
-       );
+    if (grandParentId) {
+      const comm2 = amount * 0.03;
+      await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm2, grandParentId]);
+      const ref2 = `REF-L2-${grandParentId}-${Date.now()}`;
+      await client.query(
+        `INSERT INTO transactions (user_id, amount, type, reference, status, description) VALUES ($1, $2, 'referral_bonus', $3, 'success', 'Level 2 Commission')`,
+        [grandParentId, comm2, ref2]
+      );
 
-       // Level 3
-       const grandParentRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [grandParentId]);
-       const greatGrandParentId = grandParentRes.rows[0]?.referrer_id;
+      // Level 3
+      const grandParentRes = await client.query('SELECT referrer_id FROM users WHERE id = $1', [grandParentId]);
+      const greatGrandParentId = grandParentRes.rows[0]?.referrer_id;
 
-       if (greatGrandParentId) {
-         const comm3 = amount * 0.02;
-         await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm3, greatGrandParentId]);
-         const ref3 = `REF-L3-${greatGrandParentId}-${Date.now()}`;
-         await client.query(
-           `INSERT INTO transactions (user_id, amount, type, reference, status, description) VALUES ($1, $2, 'referral_bonus', $3, 'success', 'Level 3 Commission')`,
-           [greatGrandParentId, comm3, ref3]
-         );
-       }
-     }
-   }
+      if (greatGrandParentId) {
+        const comm3 = amount * 0.02;
+        await client.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [comm3, greatGrandParentId]);
+        const ref3 = `REF-L3-${greatGrandParentId}-${Date.now()}`;
+        await client.query(
+          `INSERT INTO transactions (user_id, amount, type, reference, status, description) VALUES ($1, $2, 'referral_bonus', $3, 'success', 'Level 3 Commission')`,
+          [greatGrandParentId, comm3, ref3]
+        );
+      }
+    }
+  }
  } catch (e) {
-   console.error('[MLM Error]', e);
+  console.error('[MLM Error]', e);
  } finally {
-   client.release();
+  client.release();
  }
 };
 
@@ -284,32 +327,32 @@ export const distributeInvestmentCommissions = async (investorId, amount) => {
 export const getUserReferralData = async (userId) => {
  const client = await pool.connect();
  try {
-   const user = await findUserById(userId);
-   if(!user) throw new Error("User not found");
+  const user = await findUserById(userId);
+  if(!user) throw new Error("User not found");
 
-   const commQuery = `
-     SELECT SUM(amount) as total 
-     FROM transactions 
-     WHERE user_id = $1 AND type = 'referral_bonus' AND status = 'success'
-   `;
-   const commRes = await client.query(commQuery, [userId]);
-   const totalCommission = parseFloat(commRes.rows[0].total || 0);
+  const commQuery = `
+    SELECT SUM(amount) as total 
+    FROM transactions 
+    WHERE user_id = $1 AND type = 'referral_bonus' AND status = 'success'
+  `;
+  const commRes = await client.query(commQuery, [userId]);
+  const totalCommission = parseFloat(commRes.rows[0].total || 0);
 
-   const teamQuery = `
-     SELECT id, full_name as name, created_at as joined_date, balance
-     FROM users 
-     WHERE referrer_id = $1 
-     ORDER BY created_at DESC
-   `;
-   const teamRes = await client.query(teamQuery, [userId]);
+  const teamQuery = `
+    SELECT id, full_name as name, created_at as joined_date, balance
+    FROM users 
+    WHERE referrer_id = $1 
+    ORDER BY created_at DESC
+  `;
+  const teamRes = await client.query(teamQuery, [userId]);
 
-   return {
-     total_commission: totalCommission,
-     team_count: teamRes.rows.length,
-     team_list: teamRes.rows
-   };
+  return {
+    total_commission: totalCommission,
+    team_count: teamRes.rows.length,
+    team_list: teamRes.rows
+  };
  } finally {
-   client.release();
+  client.release();
  }
 };
 
@@ -317,26 +360,26 @@ export const getUserReferralData = async (userId) => {
 export const getUserDashboardData = async (userId) => {
  const investments = await getAllInvestmentsByUserId(userId);
  const activeInvestments = investments.map(inv => {
-   const created = new Date(inv.created_at);
-   const now = new Date();
-   const diffTime = Math.abs(now - created);
-   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-   
-   const duration = inv.duration || 30;
-   const daysLeft = Math.max(0, duration - diffDays);
-   
-   let status = inv.status || 'active';
-   if (daysLeft === 0 && status === 'active') status = 'completed';
+  const created = new Date(inv.created_at);
+  const now = new Date();
+  const diffTime = Math.abs(now - created);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+  
+  const duration = inv.duration || 30;
+  const daysLeft = Math.max(0, duration - diffDays);
+  
+  let status = inv.status || 'active';
+  if (daysLeft === 0 && status === 'active') status = 'completed';
 
-   return {
-     id: inv.id,
-     itemname: inv.itemName,
-     daily_earning: inv.daily_earning,
-     total_earning: inv.total_earning,
-     price: inv.price,
-     days_left: daysLeft,
-     status: status
-   };
+  return {
+    id: inv.id,
+    itemname: inv.itemName,
+    daily_earning: inv.daily_earning,
+    total_earning: inv.total_earning,
+    price: inv.price,
+    days_left: daysLeft,
+    status: status
+  };
  }).filter(i => i.status === 'active');
 
  return { active_investments: activeInvestments };
@@ -355,7 +398,7 @@ export const getUserProfile = async (userId) => {
  return user;
 };
 
-// --- ADMIN FUNDING FUNCTION ---
+// --- ADMIN FUND FUNCTION ---
 export const adminFundUser = async (email, amount) => {
    const user = await findUserByEmail(email);
    if (!user) throw new Error("User email not found");
