@@ -17,7 +17,8 @@ import {
  // --- ADMIN IMPORTS ---
  getAllUsers,      
  updateUserStatus, 
- adminUpdateUser   
+ adminUpdateUser,
+ forgotPassword // <--- NEW IMPORT ADDED HERE
 } from '../service/userService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
@@ -55,6 +56,17 @@ router.post('/login', async (req, res) => {
  catch (error) {
    res.status(401).json({ success: false, message: error.message });
  }
+});
+
+// NEW: Forgot Password Route
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const result = await forgotPassword(email);
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
 });
 
 // User logout
