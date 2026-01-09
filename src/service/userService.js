@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs'; // Ensure this matches your package.json
+import bcrypt from 'bcryptjs'; 
 import jwt from 'jsonwebtoken';
 import crypto from "crypto";
 import nodemailer from "nodemailer";
@@ -159,12 +159,13 @@ export const verifyUserOtp = async (email, otp) => {
  const newBalance = Number(user.balance) + welcomeBonus;
  await updateUserBalance(user.id, newBalance);
  
- await createTransaction(
-     user.id, 
-     welcomeBonus, 
-     `WEL-${user.id}`, 
-     'welcome_bonus'
- );
+ await createTransaction({
+      userId: user.id, 
+      amount: welcomeBonus, 
+      type: 'welcome_bonus',
+      status: 'success',
+      description: 'Welcome Bonus'
+ });
 
  return {
   success: true,
@@ -173,13 +174,19 @@ export const verifyUserOtp = async (email, otp) => {
  };
 };
 
-// --- LOGIN USER ---
+// --- UPDATED LOGIN USER (Identifier Handshake Fixed) ---
 export const loginUser = async ({ email, phone, password }) => {
  let user;
- if (email && email.trim() !== "") {
-     user = await findUserByEmail(email);
- } else if (phone && phone.trim() !== "") {
-     user = await findUserByPhone(phone);
+ 
+ const emailValid = email && email.trim() !== "";
+ const phoneValid = phone && phone.trim() !== "";
+
+ if (emailValid) {
+     user = await findUserByEmail(email.trim());
+ } 
+ 
+ if (!user && phoneValid) {
+     user = await findUserByPhone(phone.trim());
  }
 
  if (!user) throw new Error('Invalid credentials');
@@ -191,7 +198,7 @@ export const loginUser = async ({ email, phone, password }) => {
  const isMatch = await bcrypt.compare(password, user.password_hash);
  if (!isMatch) throw new Error('Invalid credentials');
 
- const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+ const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
  
  return { token, user: { id: user.id, name: user.full_name, email: user.email, role: user.role } };
 };
@@ -384,14 +391,13 @@ export const adminFundUser = async (email, amount) => {
    const newBalance = Number(user.balance) + Number(amount);
    await updateUserBalance(user.id, newBalance);
 
-   await createTransaction(
-       user.id,
-       amount,
-       `ADMIN-FUND-${Date.now()}`, 
-       'admin_credit',             
-       'success',                  
-       'Funded by Admin'           
-   );
+   await createTransaction({
+       userId: user.id,
+       amount: amount,
+       type: 'admin_credit',
+       status: 'success',
+       description: 'Funded by Admin'
+   });
 
    return { success: true, newBalance };
 };
