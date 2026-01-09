@@ -60,7 +60,6 @@ export const getUserPin = async (userId) => {
 
 // --- NEW: FETCH ACTIVE INVESTMENTS (For Days Left Timer) ---
 export const getActiveInvestments = async (userId) => {
-  // Joins investments with items table to get duration and name
   const query = `
     SELECT i.*, p.itemname, p.duration, p.dailyincome 
     FROM investments i
@@ -78,25 +77,23 @@ export const getUplineChain = async (userId) => {
     const uplines = [];
     let currentUserId = userId;
 
-    // Loop 3 times to find Level 1, 2, and 3
     for (let i = 0; i < 3; i++) {
       const query = `SELECT referrer_id FROM users WHERE id = $1`;
       const { rows } = await client.query(query, [currentUserId]);
       
       if (rows.length > 0 && rows[0].referrer_id) {
         const referrerId = rows[0].referrer_id;
-        uplines.push(referrerId); // Add to list
-        currentUserId = referrerId; // Move up to the next level
+        uplines.push(referrerId); 
+        currentUserId = referrerId; 
       } else {
-        break; // Stop if no referrer exists
+        break; 
       }
     }
-    return uplines; // Returns array like [Level1_ID, Level2_ID, Level3_ID]
+    return uplines; 
   } finally {
     client.release();
   }
 };
-// --------------------------------------------------
 
 export const findUserById = async (userId) => {
   const query = `SELECT * FROM users WHERE id = $1`;
