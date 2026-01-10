@@ -6,7 +6,7 @@ import { getVipByIdQuery } from '../repositories/vipRepository.js';
 import { createInvestmentTransaction, createReferralBonusTransaction, createInvestmentRoiTransaction } from '../repositories/transactionRepository.js';
 import { distributeInvestmentCommissions } from './userService.js'; 
 
-// Create investment for User
+// Create investment for User (Standard Items)
 export const createInvestment = async (userId, itemId) => {
   const client = await pool.connect();
   try {
@@ -27,17 +27,15 @@ export const createInvestment = async (userId, itemId) => {
     const newUserBalance = Number(user.balance) - Number(item.price);
     await updateUserBalance(user.id, newUserBalance, client);
 
-    const dailyEarning = item.dailyincome;
-    const duration = item.duration || 30;
-
     const investment = await insertInvestment(
       {
         userId,
         itemId: item.id,              
         casperVipId: null,        
-        dailyEarning: dailyEarning,
+        dailyEarning: item.dailyincome,
         totalEarning: 0,
-        duration: duration,
+        duration: item.duration || 35,
+        price: item.price, // Explicitly pass price
         status: 'active' 
       },
       client
@@ -47,9 +45,8 @@ export const createInvestment = async (userId, itemId) => {
 
     try {
         await distributeInvestmentCommissions(user.id, Number(item.price));
-        console.log(`[MLM] Distributed commissions for Investment ${investment.id}`);
     } catch (commError) {
-        console.error(`[MLM Error] Failed to distribute commissions: ${commError.message}`);
+        console.error(`[MLM Error] Commission failure: ${commError.message}`);
     }
 
     await client.query('COMMIT');
@@ -80,17 +77,15 @@ export const createVipInvestment = async (userId, vipId) => {
     const newUserBalance = Number(user.balance) - Number(vip.price);
     await updateUserBalance(user.id, newUserBalance, client);
 
-    const dailyEarning = vip.daily_earnings;
-    const duration = vip.duration || 30;
-
     const investment = await insertInvestment(
       {
         userId,
         itemId: null,              
         casperVipId: vip.id,        
-        dailyEarning: dailyEarning,
+        dailyEarning: vip.daily_earnings,
         totalEarning: 0,
-        duration: duration,
+        duration: vip.duration || 35,
+        price: vip.price, // Explicitly pass price
         status: 'active'
       },
       client
@@ -100,9 +95,8 @@ export const createVipInvestment = async (userId, vipId) => {
 
     try {
         await distributeInvestmentCommissions(user.id, Number(vip.price));
-        console.log(`[MLM] Distributed VIP commissions for Investment ${investment.id}`);
     } catch (commError) {
-        console.error(`[MLM Error] Failed to distribute VIP commissions: ${commError.message}`);
+        console.error(`[MLM Error] VIP Commission failure: ${commError.message}`);
     }
 
     await client.query('COMMIT');
@@ -122,9 +116,7 @@ export const processDailyEarnings = async () => {
   for (const investment of investments) {
     const { id, user_id, daily_earning, total_earning, status } = investment;
 
-    if (status && status !== 'active') {
-        continue;
-    }
+    if (status && status !== 'active') continue;
 
     const user = await findUserById(user_id);
     if (!user) continue;
@@ -139,7 +131,7 @@ export const processDailyEarnings = async () => {
   }
 };
 
-// Get all investments for a user with FIXED calculations
+// Get all investments for a user - SYNCED VERSION
 export const getUserInvestments = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error('User not found');
@@ -150,27 +142,25 @@ export const getUserInvestments = async (userId) => {
   let totalDailyIncome = 0;
 
   const formattedInvestments = investments.map(investment => {
-    // FIX 1: Use the price from the DB (the 500k we verified) instead of defaulting to item price
-    const investmentAmount = Number(investment.price || investment.amount || 0);
-    const dailyIncome = Number(investment.daily_earning || 0);
-    
-    // FIX 2: Use the days_left column directly to avoid the 'null' caused by date math errors
-    const daysRemaining = investment.days_left !== null ? Number(investment.days_left) : 30;
+    // We TRUST the repository values (price and days_left) now
+    const investmentAmount = Number(investment.price) || 0;
+    const dailyIncome = Number(investment.daily_earning) || 0;
+    const daysLeft = investment.days_left !== null ? Number(investment.days_left) : 0;
     
     totalInvestmentAmount += investmentAmount;
-    if (investment.status === 'active' || !investment.status) {
+    if (investment.status === 'active') {
         totalDailyIncome += dailyIncome;
     }
 
     return {
       id: investment.id,
       itemId: investment.item_id,
-      itemName: investment.itemname || 'Winery Plan',
+      itemName: investment.itemname,
       itemImage: investment.itemimage,
-      investmentAmount: investmentAmount, // Fixed '8k' issue
+      investmentAmount: investmentAmount, 
       dailyIncome: dailyIncome,
       totalEarning: Number(investment.total_earning) || 0,
-      days_left: daysRemaining,           // Fixed 'null' issue
+      days_left: daysLeft, // NO MORE MATH HERE - Pulls directly from DB
       createdAt: investment.start_date,
       status: investment.status || 'active'
     };
@@ -185,14 +175,12 @@ export const getUserInvestments = async (userId) => {
   };
 };
 
-// Get user earnings summary (today, yesterday, total)
+// Summaries and Rewards remain unchanged but now pull clean data
 export const getUserEarningsSummary = async (userId) => {
   try {
     const investments = await getAllInvestmentsByUserId(userId);
-    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
@@ -205,28 +193,21 @@ export const getUserEarningsSummary = async (userId) => {
       const dailyEarning = Number(investment.daily_earning) || 0;
       const totalEarning = Number(investment.total_earning) || 0;
       
-      if (investmentDate <= today && (investment.status === 'active' || !investment.status)) {
+      if (investmentDate <= today && investment.status === 'active') {
         todayEarnings += dailyEarning;
       }
-      
       if (investmentDate <= yesterday) {
         yesterdayEarnings += dailyEarning;
       }
-      
       totalEarnings += totalEarning;
     });
     
-    return {
-      today: todayEarnings,
-      yesterday: yesterdayEarnings,
-      total: totalEarnings
-    };
+    return { today: todayEarnings, yesterday: yesterdayEarnings, total: totalEarnings };
   } catch (error) {
-    throw new Error(`Failed to fetch earnings summary: ${error.message}`);
+    throw new Error(`Earnings Summary Error: ${error.message}`);
   }
 };
 
-// Get unified reward history
 export const getRewardHistory = async (userId) => {
   try {
     const user = await findUserById(userId);
@@ -322,6 +303,6 @@ export const getRewardHistory = async (userId) => {
       }
     };
   } catch (error) {
-    throw new Error(`Failed to fetch reward history: ${error.message}`);
+    throw new Error(`Reward History Error: ${error.message}`);
   }
 };
