@@ -151,8 +151,19 @@ export const getUserInvestments = async (userId) => {
   let totalDailyIncome = 0;
 
   const formattedInvestments = investments.map(investment => {
+    // FIX: Pulling the correct price/amount for the "Acquired" field
     const investmentAmount = Number(investment.price) || 0;
     const dailyIncome = Number(investment.daily_earning) || 0;
+    
+    // FIX: Calculate "Days Left" for the frontend
+    const startDate = new Date(investment.start_date);
+    const duration = Number(investment.duration) || 30;
+    const today = new Date();
+    
+    // Calculate difference in days
+    const diffTime = Math.abs(today - startDate);
+    const daysPassed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const daysRemaining = Math.max(0, duration - daysPassed);
     
     totalInvestmentAmount += investmentAmount;
     if (investment.status === 'active' || !investment.status) {
@@ -164,16 +175,17 @@ export const getUserInvestments = async (userId) => {
       itemId: investment.item_id,
       itemName: investment.itemname,
       itemImage: investment.itemimage,
-      investmentAmount: investmentAmount,
+      investmentAmount: investmentAmount, // Matches frontend "Acquired"
       dailyIncome: dailyIncome,
       totalEarning: Number(investment.total_earning) || 0,
-      createdAt: investment.start_date, // UPDATED: Using start_date
+      days_left: daysRemaining, // FIX: Frontend now sees the number
+      createdAt: investment.start_date,
       status: investment.status || 'active'
     };
   });
 
   return {
-    investments: formattedInvestments,
+    active_investments: formattedInvestments, // Matches frontend expected key
     totalInvestmentAmount,
     totalDailyIncome,
     totalInvestments: investments.length
@@ -196,7 +208,6 @@ export const getUserEarningsSummary = async (userId) => {
     let totalEarnings = 0;
     
     investments.forEach(investment => {
-      // UPDATED: Using start_date for calculation
       const investmentDate = new Date(investment.start_date);
       const dailyEarning = Number(investment.daily_earning) || 0;
       const totalEarning = Number(investment.total_earning) || 0;
