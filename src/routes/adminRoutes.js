@@ -1,13 +1,13 @@
 import express from "express";
-import {loginAdmin, getAdminStats, getAllUsersForAdmin, getAllInvestmentsForAdmin } from "../service/adminService.js";
+import { loginAdmin, getAdminStats, getAllUsersForAdmin, getAllInvestmentsForAdmin } from "../service/adminService.js";
 import upload from '../middleware/upload.js';
 import { uploadItem, deleteItem, updateItem } from '../service/itemService.js';
 import { createVip, getAllVips, getVipById, updateVip, deleteVip } from '../service/vipService.js';
-import { getPendingWithdrawalsForAdmin } from '../service/transactionService.js';
+// ADDED: approveWithdrawal and rejectWithdrawal imports
+import { getPendingWithdrawalsForAdmin, approveWithdrawal, rejectWithdrawal } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
-
 
 router.post("/login", async (req, res) => {
   try {
@@ -19,19 +19,13 @@ router.post("/login", async (req, res) => {
   }
 });
 
-
 // Admin uploads a new item (with image)
 router.post('/upload', verifyToken, verifyAdmin, upload.single('itemImage'), async (req, res) => {
   try {
     const { itemName, price, dailyIncome, duration } = req.body;
-    
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "Image file is required" });
-    }
-
-    const imageUrl = req.file.path; // Cloudinary URL
+    if (!req.file) return res.status(400).json({ success: false, message: "Image file is required" });
+    const imageUrl = req.file.path; 
     const result = await uploadItem({ itemName, price, dailyIncome, duration }, imageUrl);
-    
     res.status(201).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -49,14 +43,12 @@ router.delete('/deleteItem/:id', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-
 // Admin updates an item
 router.put('/updateItem/:id', verifyToken, verifyAdmin, upload.single('itemImage'), async (req, res) => {
   try {
     const { id } = req.params;
     const { itemName, price, dailyIncome, duration } = req.body;
     const imageUrl = req.file ? req.file.path : null;
-    
     const result = await updateItem(id, { itemName, price, dailyIncome, duration }, imageUrl);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
@@ -64,37 +56,22 @@ router.put('/updateItem/:id', verifyToken, verifyAdmin, upload.single('itemImage
   }
 });
 
-
 // ========== CASPERVIP ROUTES ==========
 
-// Admin creates a new CASPERVIP product
 router.post('/vip/upload', verifyToken, verifyAdmin, upload.single('image'), async (req, res) => {
   try {
     const { name, price, daily_earnings, duration_days, total_returns } = req.body;
-    
     if (!name || !price || !daily_earnings || !duration_days || !total_returns) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "All fields are required: name, price, daily_earnings, duration_days, total_returns" 
-      });
+      return res.status(400).json({ success: false, message: "All fields are required" });
     }
-
     const imageUrl = req.file ? req.file.path : null;
-    const result = await createVip({ 
-      name, 
-      price, 
-      daily_earnings, 
-      duration_days, 
-      total_returns 
-    }, imageUrl);
-    
+    const result = await createVip({ name, price, daily_earnings, duration_days, total_returns }, imageUrl);
     res.status(201).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
 });
 
-// Admin gets all CASPERVIP products
 router.get('/vip', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const result = await getAllVips();
@@ -104,7 +81,6 @@ router.get('/vip', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// Admin gets single CASPERVIP by ID
 router.get('/vip/:id', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -115,28 +91,18 @@ router.get('/vip/:id', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// Admin updates a CASPERVIP product
 router.put('/vip/:id', verifyToken, verifyAdmin, upload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, price, daily_earnings, duration_days, total_returns } = req.body;
     const imageUrl = req.file ? req.file.path : null;
-    
-    const result = await updateVip(id, { 
-      name, 
-      price, 
-      daily_earnings, 
-      duration_days, 
-      total_returns 
-    }, imageUrl);
-    
+    const result = await updateVip(id, { name, price, daily_earnings, duration_days, total_returns }, imageUrl);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
 });
 
-// Admin deletes a CASPERVIP product
 router.delete('/vip/:id', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -147,10 +113,8 @@ router.delete('/vip/:id', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-
 // ========== ADMIN DASHBOARD ROUTES ==========
 
-// Get admin dashboard stats
 router.get('/stats', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const stats = await getAdminStats();
@@ -160,7 +124,6 @@ router.get('/stats', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// Get all users (for admin)
 router.get('/users', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const users = await getAllUsersForAdmin();
@@ -170,7 +133,6 @@ router.get('/users', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// Get all investments (for admin)
 router.get('/investments', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const investments = await getAllInvestmentsForAdmin();
@@ -180,13 +142,37 @@ router.get('/investments', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// Get pending withdrawals (for admin)
+// ========== WITHDRAWAL MANAGEMENT ROUTES (FIXED) ==========
+
+// Get pending withdrawals
 router.get('/withdrawals/pending', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const result = await getPendingWithdrawalsForAdmin();
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Approve a withdrawal (The 400 Error Fix)
+router.post('/withdrawals/approve/:id', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await approveWithdrawal(id);
+    res.status(200).json({ success: true, message: "Withdrawal approved successfully", ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// Reject a withdrawal
+router.post('/withdrawals/reject/:id', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await rejectWithdrawal(id);
+    res.status(200).json({ success: true, message: "Withdrawal rejected successfully", ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 });
 
