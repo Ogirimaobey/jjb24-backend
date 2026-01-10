@@ -38,7 +38,7 @@ export const createInvestment = async (userId, itemId) => {
         dailyEarning: dailyEarning,
         totalEarning: 0,
         duration: duration,
-        status: 'active' // Ensure status is explicitly set to active
+        status: 'active' 
       },
       client
     );
@@ -122,7 +122,6 @@ export const processDailyEarnings = async () => {
   for (const investment of investments) {
     const { id, user_id, daily_earning, total_earning, status } = investment;
 
-    // Only process if status is 'active'
     if (status && status !== 'active') {
         continue;
     }
@@ -140,7 +139,7 @@ export const processDailyEarnings = async () => {
   }
 };
 
-// Get all investments for a user with calculations
+// Get all investments for a user with FIXED calculations
 export const getUserInvestments = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error('User not found');
@@ -151,19 +150,12 @@ export const getUserInvestments = async (userId) => {
   let totalDailyIncome = 0;
 
   const formattedInvestments = investments.map(investment => {
-    // FIX: Pulling the correct price/amount for the "Acquired" field
-    const investmentAmount = Number(investment.price) || 0;
-    const dailyIncome = Number(investment.daily_earning) || 0;
+    // FIX 1: Use the price from the DB (the 500k we verified) instead of defaulting to item price
+    const investmentAmount = Number(investment.price || investment.amount || 0);
+    const dailyIncome = Number(investment.daily_earning || 0);
     
-    // FIX: Calculate "Days Left" for the frontend
-    const startDate = new Date(investment.start_date);
-    const duration = Number(investment.duration) || 30;
-    const today = new Date();
-    
-    // Calculate difference in days
-    const diffTime = Math.abs(today - startDate);
-    const daysPassed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    const daysRemaining = Math.max(0, duration - daysPassed);
+    // FIX 2: Use the days_left column directly to avoid the 'null' caused by date math errors
+    const daysRemaining = investment.days_left !== null ? Number(investment.days_left) : 30;
     
     totalInvestmentAmount += investmentAmount;
     if (investment.status === 'active' || !investment.status) {
@@ -173,22 +165,23 @@ export const getUserInvestments = async (userId) => {
     return {
       id: investment.id,
       itemId: investment.item_id,
-      itemName: investment.itemname,
+      itemName: investment.itemname || 'Winery Plan',
       itemImage: investment.itemimage,
-      investmentAmount: investmentAmount, // Matches frontend "Acquired"
+      investmentAmount: investmentAmount, // Fixed '8k' issue
       dailyIncome: dailyIncome,
       totalEarning: Number(investment.total_earning) || 0,
-      days_left: daysRemaining, // FIX: Frontend now sees the number
+      days_left: daysRemaining,           // Fixed 'null' issue
       createdAt: investment.start_date,
       status: investment.status || 'active'
     };
   });
 
   return {
-    active_investments: formattedInvestments, // Matches frontend expected key
+    active_investments: formattedInvestments,
     totalInvestmentAmount,
     totalDailyIncome,
-    totalInvestments: investments.length
+    totalInvestments: investments.length,
+    userBalance: Number(user.balance || 0)
   };
 };
 
