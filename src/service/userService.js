@@ -359,20 +359,29 @@ export const getUserReferralData = async (userId) => {
 };
 
 // --- GET DASHBOARD DATA ---
-// FIXED: Mirroring Repository logic exactly. No manual diff calculations.
+// REDUNDANT SYNC FIX: Mirroring all possible key names for itemname, price, and days_left
 export const getUserDashboardData = async (userId) => {
  const investments = await getAllInvestmentsByUserId(userId);
  
- // We map all returned investments to ensure they appear on screen.
- const activeInvestments = investments.map(inv => ({
-    id: inv.id,
-    itemname: inv.itemname,
-    daily_earning: inv.daily_earning,
-    total_earning: inv.total_earning,
-    price: inv.price,
-    days_left: inv.days_left,
-    status: inv.status || 'active'
- }));
+ const activeInvestments = investments.map(inv => {
+    // Redundant naming to ensure frontend never sees 'undefined' or 'null'
+    const name = inv.itemname || inv.itemName || 'Winery Plan';
+    const amount = Number(inv.price || inv.amount) || 0;
+    const remainingDays = (inv.days_left !== undefined && inv.days_left !== null) ? Number(inv.days_left) : 0;
+
+    return {
+        id: inv.id,
+        itemname: name,
+        itemName: name,
+        price: amount,
+        amount: amount,
+        daily_earning: inv.daily_earning,
+        total_earning: inv.total_earning,
+        days_left: remainingDays,
+        daysLeft: remainingDays,
+        status: inv.status || 'active'
+    };
+ });
 
  return { active_investments: activeInvestments };
 };
