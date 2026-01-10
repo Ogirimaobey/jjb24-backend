@@ -3,6 +3,7 @@ import pool from '../config/database.js';
 /**
  * FIX 1: Universal Insert
  * Replicating exactly how the Service provides data.
+ * Ensures the snapshot of the price is saved at the moment of purchase.
  */
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
@@ -60,29 +61,30 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.start_date,
       i.end_date,
       i.status,
-      -- STOPS EVERYTHING FROM SHOWING 'CHAMDOR 1'
+      
+      -- UNIVERSAL MIRROR: PREVENTS 'CHAMDOR 1' OVERWRITING VIP NAMES
       CASE 
         WHEN i.caspervip_id IS NOT NULL THEN cv.name 
         WHEN i.item_id IS NOT NULL THEN it.itemname 
         ELSE 'Winery Plan' 
       END AS "itemname",
       
-      -- STOPS EVERYTHING FROM SHOWING '8000' (PULLS REAL PRICE PAID)
+      -- UNIVERSAL MIRROR: PREVENTS '8000' OVERWRITING ACTUAL PAID AMOUNT
       COALESCE(i.amount, i.price, it.price, cv.price, 0) AS "price",
       
-      -- PULLS THE YIELD RECORDED AT PURCHASE
+      -- SNAPSHOT YIELD: PREVENTS SHOP CHANGES FROM AFFECTING ACTIVE PLANS
       COALESCE(i.daily_earning, it.dailyincome, cv.daily_earnings) AS "daily_earning",
       
-      -- PULLS CORRECT IMAGE BASED ON TYPE
+      -- DYNAMIC IMAGE MAPPING
       CASE 
         WHEN i.caspervip_id IS NOT NULL THEN cv.image 
         ELSE it.itemimage 
       END AS "itemimage",
       
-      -- HANDLES DURATION COUNTDOWN
+      -- DURATION SYNC
       COALESCE(i.duration, it.duration, cv.duration_days) AS "duration",
       
-      -- LIVE COUNTDOWN MATH (35 -> 34 -> 33)
+      -- LIVE DATABASE-LEVEL COUNTDOWN (ACCURATE TO THE SECOND)
       GREATEST(0, EXTRACT(DAY FROM (i.end_date - CURRENT_TIMESTAMP))) AS "days_left"
 
     FROM investments i
@@ -97,10 +99,11 @@ export const getAllInvestmentsByUserId = async (userId) => {
 
 /**
  * FIX 3: Global Admin Stats
+ * Accurately calculates platform liquidity based on actual transactions.
  */
 export const getTotalAmountInvested = async () => {
   const query = `
-    SELECT SUM(COALESCE(price, amount, 0)) as total
+    SELECT SUM(COALESCE(amount, price, 0)) as total
     FROM investments 
     WHERE status = 'active'
   `;
@@ -108,6 +111,10 @@ export const getTotalAmountInvested = async () => {
   return parseFloat(rows[0].total) || 0;
 };
 
+/**
+ * PETER'S VIEW: Community Stats
+ * Ensures Admin sees exactly what the users are seeing for support transparency.
+ */
 export const getAllInvestmentsWithDetails = async () => {
   const query = `
     SELECT 
@@ -121,7 +128,8 @@ export const getAllInvestmentsWithDetails = async () => {
         WHEN i.item_id IS NOT NULL THEN it.itemname 
         ELSE 'Plan' 
       END AS "plan_name",
-      COALESCE(i.amount, i.price, 0) AS "investment_amount"
+      COALESCE(i.amount, i.price, 0) AS "investment_amount",
+      GREATEST(0, EXTRACT(DAY FROM (i.end_date - CURRENT_TIMESTAMP))) AS "days_remaining"
     FROM investments i
     INNER JOIN users u ON i.user_id = u.id
     LEFT JOIN items it ON i.item_id = it.id
