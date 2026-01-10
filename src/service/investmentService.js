@@ -17,7 +17,6 @@ export const createInvestment = async (userId, itemId) => {
 
     const { rows } = await client.query(getItemByIdQuery, [itemId]);
     const item = rows[0];
-
     if (!item) throw new Error('Item not found');
 
     if (Number(user.balance) < Number(item.price)) {
@@ -35,7 +34,7 @@ export const createInvestment = async (userId, itemId) => {
         dailyEarning: item.dailyincome,
         totalEarning: 0,
         duration: item.duration || 35,
-        price: item.price, // Explicitly pass price
+        price: item.price, 
         status: 'active' 
       },
       client
@@ -69,8 +68,8 @@ export const createVipInvestment = async (userId, vipId) => {
 
     const { rows } = await client.query(getVipByIdQuery, [vipId]);
     const vip = rows[0];
-
     if (!vip) throw new Error('CASPERVIP product not found');
+
     if (Number(user.balance) < Number(vip.price)) {
       throw new Error('Insufficient balance to make this investment');
     }
@@ -85,7 +84,7 @@ export const createVipInvestment = async (userId, vipId) => {
         dailyEarning: vip.daily_earnings,
         totalEarning: 0,
         duration: vip.duration || 35,
-        price: vip.price, // Explicitly pass price
+        price: vip.price, 
         status: 'active'
       },
       client
@@ -115,7 +114,6 @@ export const processDailyEarnings = async () => {
 
   for (const investment of investments) {
     const { id, user_id, daily_earning, total_earning, status } = investment;
-
     if (status && status !== 'active') continue;
 
     const user = await findUserById(user_id);
@@ -131,7 +129,7 @@ export const processDailyEarnings = async () => {
   }
 };
 
-// Get all investments for a user - SYNCED VERSION
+// Get all investments for a user - REPLICATED FOR FRONTEND
 export const getUserInvestments = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error('User not found');
@@ -142,27 +140,25 @@ export const getUserInvestments = async (userId) => {
   let totalDailyIncome = 0;
 
   const formattedInvestments = investments.map(investment => {
-    // We TRUST the repository values (price and days_left) now
-    const investmentAmount = Number(investment.price) || 0;
-    const dailyIncome = Number(investment.daily_earning) || 0;
-    const daysLeft = investment.days_left !== null ? Number(investment.days_left) : 0;
+    // FORCE these values from the database columns
+    const priceValue = Number(investment.price) || 0;
+    const dailyValue = Number(investment.daily_earning) || 0;
+    const daysRemaining = Number(investment.days_left) || 0;
     
-    totalInvestmentAmount += investmentAmount;
+    totalInvestmentAmount += priceValue;
     if (investment.status === 'active') {
-        totalDailyIncome += dailyIncome;
+        totalDailyIncome += dailyValue;
     }
 
     return {
       id: investment.id,
-      itemId: investment.item_id,
-      itemName: investment.itemname,
-      itemImage: investment.itemimage,
-      investmentAmount: investmentAmount, 
-      dailyIncome: dailyIncome,
-      totalEarning: Number(investment.total_earning) || 0,
-      days_left: daysLeft, // NO MORE MATH HERE - Pulls directly from DB
-      createdAt: investment.start_date,
-      status: investment.status || 'active'
+      itemname: investment.itemname,      // Exact match for main.js
+      price: priceValue,                 // Exact match for main.js (500k fix)
+      daily_earning: dailyValue,         // Exact match for main.js
+      total_earning: Number(investment.total_earning) || 0,
+      days_left: daysRemaining,          // Exact match for main.js (Null fix)
+      status: investment.status || 'active',
+      start_date: investment.start_date
     };
   });
 
@@ -175,7 +171,6 @@ export const getUserInvestments = async (userId) => {
   };
 };
 
-// Summaries and Rewards remain unchanged but now pull clean data
 export const getUserEarningsSummary = async (userId) => {
   try {
     const investments = await getAllInvestmentsByUserId(userId);
@@ -189,17 +184,12 @@ export const getUserEarningsSummary = async (userId) => {
     let totalEarnings = 0;
     
     investments.forEach(investment => {
-      const investmentDate = new Date(investment.start_date);
       const dailyEarning = Number(investment.daily_earning) || 0;
-      const totalEarning = Number(investment.total_earning) || 0;
-      
-      if (investmentDate <= today && investment.status === 'active') {
+      if (investment.status === 'active') {
         todayEarnings += dailyEarning;
-      }
-      if (investmentDate <= yesterday) {
         yesterdayEarnings += dailyEarning;
       }
-      totalEarnings += totalEarning;
+      totalEarnings += Number(investment.total_earning) || 0;
     });
     
     return { today: todayEarnings, yesterday: yesterdayEarnings, total: totalEarnings };
