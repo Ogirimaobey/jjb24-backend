@@ -2,7 +2,7 @@ import pool from '../config/database.js';
 
 /**
  * FIX 1: Universal Insert
- * Works for both standard Items and VIP products.
+ * Replicating exactly how the Service provides data.
  */
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
@@ -44,8 +44,8 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
 
 /**
  * FIX 2: Universal User Investment Fetch
- * - Removed cv.image_url to prevent "column does not exist" crash.
- * - Safely handles both Item and VIP table joins.
+ * MIRRORED NAMES: Matches Service and Frontend exactly.
+ * This pulls the actual price paid (500k) and the calculated days left.
  */
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
@@ -59,14 +59,12 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.start_date,
       i.end_date,
       i.status,
-      COALESCE(it.itemname, cv.name, 'Investment Plan') as itemname,
-      COALESCE(i.price, i.amount, it.price, 0) as price,
-      COALESCE(i.price, i.amount, it.price, 0) as amount,
-      COALESCE(it.dailyincome, i.daily_earning) as dailyincome,
-      -- Safely check for item image, otherwise use a placeholder
-      COALESCE(it.itemimage, 'https://res.cloudinary.com/dja8976/image/upload/v1/default-plan.png') as itemimage,
-      COALESCE(i.duration, it.duration) as duration,
-      COALESCE(i.days_left, EXTRACT(DAY FROM (i.end_date - CURRENT_DATE))) as days_left
+      COALESCE(it.itemname, cv.name, 'Winery Plan') AS "itemname",
+      COALESCE(i.price, i.amount, it.price, 0) AS "price",
+      COALESCE(it.dailyincome, cv.daily_earnings, i.daily_earning) AS "daily_earning",
+      COALESCE(it.itemimage, 'https://res.cloudinary.com/dja8976/image/upload/v1/default-plan.png') AS "itemimage",
+      COALESCE(i.duration, it.duration, cv.duration) AS "duration",
+      COALESCE(i.days_left, EXTRACT(DAY FROM (i.end_date - CURRENT_DATE))) AS "days_left"
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
     LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
@@ -79,6 +77,7 @@ export const getAllInvestmentsByUserId = async (userId) => {
 
 /**
  * FIX 3: Global Admin Stats
+ * Sums the actual volume using COALESCE for accuracy.
  */
 export const getTotalAmountInvested = async () => {
   const query = `
@@ -98,8 +97,8 @@ export const getAllInvestmentsWithDetails = async () => {
       i.start_date,
       i.status,
       u.full_name,
-      COALESCE(it.itemname, cv.name, 'Plan') as plan_name,
-      COALESCE(i.price, i.amount, 0) as investment_amount
+      COALESCE(it.itemname, cv.name, 'Plan') AS "plan_name",
+      COALESCE(i.price, i.amount, 0) AS "investment_amount"
     FROM investments i
     INNER JOIN users u ON i.user_id = u.id
     LEFT JOIN items it ON i.item_id = it.id
@@ -119,11 +118,11 @@ export const getInvestmentEarningsHistory = async (userId) => {
   const query = `
     SELECT 
       i.id,
-      i.start_date as date,
+      i.start_date AS "date",
       i.daily_earning,
       i.total_earning,
-      COALESCE(it.itemname, cv.name, 'Investment') as source_name,
-      'investment_roi' as reward_type
+      COALESCE(it.itemname, cv.name, 'Investment') AS "source_name",
+      'investment_roi' AS "reward_type"
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
     LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
