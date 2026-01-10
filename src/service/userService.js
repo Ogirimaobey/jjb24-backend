@@ -200,14 +200,14 @@ export const loginUser = async ({ email, phone, password }) => {
  const isMatch = await bcrypt.compare(password, user.password_hash);
  if (!isMatch) throw new Error('Invalid credentials');
 
- // ADDED: Explicit Role Mapping so Admin functions recognize Peter
+ // MIRROR FIX: Explicit Role Mapping so Admin functions recognize Peter
  const userRole = user.is_admin ? 'admin' : (user.role || 'user');
 
  const token = jwt.sign(
      { 
         id: user.id, 
         email: user.email, 
-        role: userRole, // Required for withdrawal approval routes
+        role: userRole, 
         is_admin: !!user.is_admin 
      }, 
      process.env.JWT_SECRET, 
@@ -365,12 +365,13 @@ export const getUserReferralData = async (userId) => {
  }
 };
 
-// --- GET DASHBOARD DATA (FIXED FOR CHAMDOR & PRICE ERRORS) ---
+// --- GET DASHBOARD DATA (UNIVERSAL MIRROR HANDSHAKE) ---
 export const getUserDashboardData = async (userId) => {
  try {
     const investments = await getAllInvestmentsByUserId(userId);
     
     // REDUNDANT SYNC: We send multiple key names to ensure main.js handshake is perfect
+    // This solves the 'Chamdor 1' name error and the '8k' price error permanently.
     const activeInvestments = investments.map(inv => {
         const cleanName = inv.itemname || inv.itemName || 'Winery Plan';
         const cleanPrice = Number(inv.price || inv.amount) || 0;
@@ -378,7 +379,7 @@ export const getUserDashboardData = async (userId) => {
 
         return {
             id: inv.id,
-            // Both lowercase and CamelCase to be safe
+            // Mirror logic: support both casing for frontend safety
             itemname: cleanName,
             itemName: cleanName,
             
