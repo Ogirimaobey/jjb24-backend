@@ -8,7 +8,11 @@ const router = express.Router();
 // Get all investments for the logged-in user
 router.get('/allInvestment', verifyToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id; // Added optional chaining for safety
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User session expired. Please log in again." });
+    }
+
     const result = await getUserInvestments(userId);
     res.status(200).json({ 
       success: true, 
@@ -24,7 +28,11 @@ router.get('/allInvestment', verifyToken, async (req, res) => {
 // Create a new item investment for the logged-in user
 router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized: No user ID found." });
+    }
+
     let { itemId } = req.params;
     
     itemId = Number(itemId);
@@ -44,30 +52,33 @@ router.post('/createInvestment/:itemId', verifyToken, async (req, res) => {
   }
 });
 
-//Create CASPERVIP investment for users
+// Create CASPERVIP investment for users
 router.post('/createVipInvestment/:vipId', verifyToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    let { vipId } = req.params;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized: No user ID found." });
+    }
 
+    let { vipId } = req.params;
     const casperVIPInvestment = await createVipInvestment(userId, vipId);
     res.status(201).json({ success: true, data: casperVIPInvestment });
   } 
   catch (error) {
-    console.error("Error creating VIP investment:", error); // Added log
+    console.error("Error creating VIP investment:", error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-//Get CASPERVIP investment for users
+// Get CASPERVIP investment for users
 router.get('/allVipInvestment', verifyToken, async (req, res) => {
   try {
     const data = await getAllVips();
     res.json(data);
   } catch (e) {
-    console.error("Error fetching VIPs:", e); // Added log
+    console.error("Error fetching VIPs:", e);
     res.status(500).json({ message: e.message });
   }
 });
 
-export default router; // <--- MOVED TO BOTTOM (Correct Position)
+export default router;
