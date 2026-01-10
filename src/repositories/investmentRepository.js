@@ -3,12 +3,13 @@ import pool from '../config/database.js';
 /**
  * FIX 1: Universal Insert
  * Replicating exactly how the Service provides data.
- * Ensures the snapshot of the price is saved at the moment of purchase.
+ * DURATION FIX: Dynamically sets end_date based on the specific plan duration.
  */
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
   client
 ) => {
+  // We use client for transactional safety (BEGIN/COMMIT)
   const { rows } = await client.query(
     `
     INSERT INTO investments
