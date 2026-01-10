@@ -83,7 +83,7 @@ export const initializePayment = async (userId, amount, email, phone) => {
     tx_ref: reference,
     amount,
     currency: "NGN",
-    redirect_url: "https://jjb24-backend.onrender.com/api/payment/verify-redirect", // Forces check on return
+    redirect_url: "https://jjb24-backend-1.onrender.com/api/payment/verify-redirect", // Updated with '-1' to match live Render URL
     customer: { 
         email, 
         phonenumber: phone, 
