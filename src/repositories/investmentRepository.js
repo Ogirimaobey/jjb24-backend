@@ -1,13 +1,11 @@
 import pool from '../config/database.js';
 
-// --- FIX 1: INSERT WITH EXPLICIT PRICE ---
+// --- FIX 1: INSERT WITH DYNAMIC DURATION ---
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
   client
 ) => {
-  const safeDuration = Number(duration) || 30;
-  const safePrice = Number(price) || 0;
-
+  // We use the duration passed from the item/vip selection directly
   const { rows } = await client.query(
     `
     INSERT INTO investments
@@ -15,7 +13,7 @@ export const insertInvestment = async (
     VALUES ($1, $2, $3, $4, $5, NOW(), NOW() + ($6 || ' days')::interval, 'active', $7, $7, $6)
     RETURNING *;
     `,
-    [userId, itemId, casperVipId, dailyEarning, totalEarning, safeDuration, safePrice]
+    [userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price]
   );
 
   return rows[0];
@@ -42,7 +40,7 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
   return rows[0];
 };
 
-// --- FIX 2: PULL REAL AMOUNT AND DAYS LEFT (Synced with VIP Table) ---
+// --- FIX 2: PULL REAL AMOUNT, NAMES, AND DURATION (Synced) ---
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
     SELECT 
@@ -59,7 +57,7 @@ export const getAllInvestmentsByUserId = async (userId) => {
       COALESCE(i.price, i.amount, it.price, 0) as amount,
       COALESCE(it.dailyincome, cv.daily_earnings, i.daily_earning) as dailyincome,
       COALESCE(it.itemimage, cv.image_url) as itemimage,
-      COALESCE(i.duration, it.duration, 30) as duration,
+      COALESCE(i.duration, it.duration, cv.duration) as duration,
       COALESCE(i.days_left, EXTRACT(DAY FROM (i.end_date - CURRENT_DATE))) as days_left
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
