@@ -129,7 +129,10 @@ export const processDailyEarnings = async () => {
   }
 };
 
-// Get all investments for a user - REPLICATED FOR FRONTEND
+/**
+ * FIXED USER INVESTMENTS FETCH
+ * Mirroring keys to ensure Frontend never sees 'null' or '8k'
+ */
 export const getUserInvestments = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error('User not found');
@@ -140,10 +143,10 @@ export const getUserInvestments = async (userId) => {
   let totalDailyIncome = 0;
 
   const formattedInvestments = investments.map(investment => {
-    // FORCE these values from the database columns
+    // Force values to numbers from Repository columns
     const priceValue = Number(investment.price) || 0;
-    const dailyValue = Number(investment.daily_earning) || 0;
-    const daysRemaining = Number(investment.days_left) || 0;
+    const dailyValue = Number(investment.daily_earning || investment.dailyincome) || 0;
+    const daysRemaining = (investment.days_left !== undefined && investment.days_left !== null) ? Number(investment.days_left) : 0;
     
     totalInvestmentAmount += priceValue;
     if (investment.status === 'active') {
@@ -152,11 +155,24 @@ export const getUserInvestments = async (userId) => {
 
     return {
       id: investment.id,
-      itemname: investment.itemname,      // Exact match for main.js
-      price: priceValue,                 // Exact match for main.js (500k fix)
-      daily_earning: dailyValue,         // Exact match for main.js
+      // REDUNDANT KEYS: Ensuring Frontend handshake never fails
+      itemname: investment.itemname || 'Winery Plan',
+      itemName: investment.itemname || 'Winery Plan', 
+      
+      price: priceValue,                 // The 500k fix
+      investmentAmount: priceValue,      // Fallback key
+      amount: priceValue,                // Fallback key
+      
+      daily_earning: dailyValue,
+      dailyYield: dailyValue,
+      dailyIncome: dailyValue,
+      
       total_earning: Number(investment.total_earning) || 0,
-      days_left: daysRemaining,          // Exact match for main.js (Null fix)
+      totalAccumulated: Number(investment.total_earning) || 0,
+      
+      days_left: daysRemaining,          // The null fix
+      daysLeft: daysRemaining,           // Fallback key
+      
       status: investment.status || 'active',
       start_date: investment.start_date
     };
