@@ -3,11 +3,12 @@ import { loginAdmin, getAdminStats, getAllUsersForAdmin, getAllInvestmentsForAdm
 import upload from '../middleware/upload.js';
 import { uploadItem, deleteItem, updateItem } from '../service/itemService.js';
 import { createVip, getAllVips, getVipById, updateVip, deleteVip } from '../service/vipService.js';
-// ADDED: approveWithdrawal and rejectWithdrawal imports
 import { getPendingWithdrawalsForAdmin, approveWithdrawal, rejectWithdrawal } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
+
+// ========== ADMIN AUTHENTICATION ==========
 
 router.post("/login", async (req, res) => {
   try {
@@ -18,6 +19,8 @@ router.post("/login", async (req, res) => {
     res.status(400).json({ success: false, message: err.message });
   }
 });
+
+// ========== STANDARD ITEM MANAGEMENT ==========
 
 // Admin uploads a new item (with image)
 router.post('/upload', verifyToken, verifyAdmin, upload.single('itemImage'), async (req, res) => {
@@ -56,7 +59,7 @@ router.put('/updateItem/:id', verifyToken, verifyAdmin, upload.single('itemImage
   }
 });
 
-// ========== CASPERVIP ROUTES ==========
+// ========== CASPERVIP MANAGEMENT ==========
 
 router.post('/vip/upload', verifyToken, verifyAdmin, upload.single('image'), async (req, res) => {
   try {
@@ -113,7 +116,7 @@ router.delete('/vip/:id', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// ========== ADMIN DASHBOARD ROUTES ==========
+// ========== ADMIN DASHBOARD & STATS ==========
 
 router.get('/stats', verifyToken, verifyAdmin, async (req, res) => {
   try {
@@ -142,9 +145,9 @@ router.get('/investments', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// ========== WITHDRAWAL MANAGEMENT ROUTES (FIXED) ==========
+// ========== WITHDRAWAL MANAGEMENT (MIRRORED HANDSHAKE) ==========
 
-// Get pending withdrawals
+// Get pending withdrawals for Peter's Dashboard
 router.get('/withdrawals/pending', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const result = await getPendingWithdrawalsForAdmin();
@@ -154,23 +157,23 @@ router.get('/withdrawals/pending', verifyToken, verifyAdmin, async (req, res) =>
   }
 });
 
-// Approve a withdrawal (The 400 Error Fix)
+// Approve a withdrawal (Peter authorizes Flutterwave payout)
 router.post('/withdrawals/approve/:id', verifyToken, verifyAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; // Matches the 'reference' expected by transactionService
     const result = await approveWithdrawal(id);
-    res.status(200).json({ success: true, message: "Withdrawal approved successfully", ...result });
+    res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
 });
 
-// Reject a withdrawal
+// Reject a withdrawal (Peter denies and refunds the user)
 router.post('/withdrawals/reject/:id', verifyToken, verifyAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; // Matches the 'reference' expected by transactionService
     const result = await rejectWithdrawal(id);
-    res.status(200).json({ success: true, message: "Withdrawal rejected successfully", ...result });
+    res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
