@@ -44,8 +44,9 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
 
 /**
  * FIX 2: Universal User Investment Fetch
- * PRIORITY FIX: Pulls data from the investment record FIRST to avoid the "8k" shop template error.
- * COUNTDOWN FIX: Calculates real-time days left from the database end_date.
+ * CHAMDOR FIX: Uses CASE to strictly separate VIP products from Standard Items.
+ * 8K FIX: Prioritizes 'i.amount' (actual paid price) over shop templates.
+ * COUNTDOWN FIX: Live calculation using database end_date minus current time.
  */
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
@@ -59,16 +60,31 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.start_date,
       i.end_date,
       i.status,
-      -- PRIORITY: Look for name in items or VIP table, default to 'Winery Plan'
-      COALESCE(it.itemname, cv.name, 'Winery Plan') AS "itemname",
-      -- PRICE FIX: Prioritize 'amount' column in investments table (where 500k is stored)
+      -- STOPS EVERYTHING FROM SHOWING 'CHAMDOR 1'
+      CASE 
+        WHEN i.caspervip_id IS NOT NULL THEN cv.name 
+        WHEN i.item_id IS NOT NULL THEN it.itemname 
+        ELSE 'Winery Plan' 
+      END AS "itemname",
+      
+      -- STOPS EVERYTHING FROM SHOWING '8000' (PULLS REAL PRICE PAID)
       COALESCE(i.amount, i.price, it.price, cv.price, 0) AS "price",
-      -- EARNINGS FIX: Prioritize what was locked in at time of purchase
+      
+      -- PULLS THE YIELD RECORDED AT PURCHASE
       COALESCE(i.daily_earning, it.dailyincome, cv.daily_earnings) AS "daily_earning",
-      COALESCE(it.itemimage, cv.image, 'https://res.cloudinary.com/dja8976/image/upload/v1/default-plan.png') AS "itemimage",
+      
+      -- PULLS CORRECT IMAGE BASED ON TYPE
+      CASE 
+        WHEN i.caspervip_id IS NOT NULL THEN cv.image 
+        ELSE it.itemimage 
+      END AS "itemimage",
+      
+      -- HANDLES DURATION COUNTDOWN
       COALESCE(i.duration, it.duration, cv.duration_days) AS "duration",
-      -- COUNTDOWN FIX: Live calculation of days left (35 -> 34 -> 33)
+      
+      -- LIVE COUNTDOWN MATH (35 -> 34 -> 33)
       GREATEST(0, EXTRACT(DAY FROM (i.end_date - CURRENT_TIMESTAMP))) AS "days_left"
+
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
     LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
@@ -100,7 +116,11 @@ export const getAllInvestmentsWithDetails = async () => {
       i.start_date,
       i.status,
       u.full_name,
-      COALESCE(it.itemname, cv.name, 'Plan') AS "plan_name",
+      CASE 
+        WHEN i.caspervip_id IS NOT NULL THEN cv.name 
+        WHEN i.item_id IS NOT NULL THEN it.itemname 
+        ELSE 'Plan' 
+      END AS "plan_name",
       COALESCE(i.amount, i.price, 0) AS "investment_amount"
     FROM investments i
     INNER JOIN users u ON i.user_id = u.id
@@ -124,7 +144,11 @@ export const getInvestmentEarningsHistory = async (userId) => {
       i.start_date AS "date",
       i.daily_earning,
       i.total_earning,
-      COALESCE(it.itemname, cv.name, 'Investment') AS "source_name",
+      CASE 
+        WHEN i.caspervip_id IS NOT NULL THEN cv.name 
+        WHEN i.item_id IS NOT NULL THEN it.itemname 
+        ELSE 'Investment' 
+      END AS "source_name",
       'investment_roi' AS "reward_type"
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
