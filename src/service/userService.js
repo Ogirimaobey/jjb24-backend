@@ -200,7 +200,7 @@ export const loginUser = async ({ email, phone, password }) => {
  const isMatch = await bcrypt.compare(password, user.password_hash);
  if (!isMatch) throw new Error('Invalid credentials');
 
- // MIRROR FIX: Explicit Role Mapping so Admin functions recognize Peter
+ // MIRROR FIX: Peter Admin Recognition
  const userRole = user.is_admin ? 'admin' : (user.role || 'user');
 
  const token = jwt.sign(
@@ -368,13 +368,13 @@ export const getUserReferralData = async (userId) => {
 // --- GET DASHBOARD DATA (THE CHAMDOR KILLER - FINAL SYNC) ---
 export const getUserDashboardData = async (userId) => {
  try {
-    // 1. Fetch from Repository (which uses the LEFT JOIN we fixed)
+    // 1. Fetch from Repository (which uses the JOIN we just fixed)
     const investments = await getAllInvestmentsByUserId(userId);
     
     const activeInvestments = investments.map(inv => {
         // LINE-BY-LINE FIX:
-        // We FORCE the use of the joined name from the database.
-        // We use Number(inv.price) which now points ONLY to i.amount in the fixed Repository.
+        // We FORCE the use of the name and price output from our dynamic SQL.
+        // We removed the "inv.amount" fallback which was causing the 8000 loop.
         const displayName = inv.itemname || 'Winery Plan';
         const actualPaid = Number(inv.price) || 0;
         const daysRemaining = Number(inv.days_left) || 0;
@@ -382,7 +382,7 @@ export const getUserDashboardData = async (userId) => {
 
         return {
             id: inv.id,
-            // Mirror Keys for main.js Handshake
+            // Handshake Keys for main.js
             itemname: displayName,
             itemName: displayName,
             
@@ -406,7 +406,7 @@ export const getUserDashboardData = async (userId) => {
 
     return { active_investments: activeInvestments };
  } catch (err) {
-    console.error("[Dashboard Final Sync Error]", err);
+    console.error("[Dashboard Fetch Error]", err);
     throw err;
  }
 };
