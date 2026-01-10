@@ -1,14 +1,11 @@
 import express from 'express';
-import axios from 'axios'; 
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import { 
-    initializePayment, 
-    verifyPayment, 
-    verifyTransactionManual, 
     requestWithdrawal, 
     approveWithdrawal, 
+    rejectWithdrawal,
     getUserTransactions, 
     getUserWithdrawalTransactions, 
     getUserDepositTransactions,
@@ -16,12 +13,12 @@ import {
 } from '../service/transactionService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
 import { getUserBalance, verifyWithdrawalPin } from '../service/userService.js';
-import pool from '../config/database.js'; // Added for the Admin Query
+import pool from '../config/database.js';
 
 const router = express.Router();
 
 // ==========================================
-// 1. CONFIGURE IMAGE UPLOAD (Receipts)
+// 1. CONFIGURE IMAGE UPLOAD (Cloudinary)
 // ==========================================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -40,13 +37,12 @@ const storage = new CloudinaryStorage({
 const upload = multer({ storage: storage });
 
 // ==========================================
-// 2. MANUAL DEPOSIT ROUTES
+// 2. MANUAL DEPOSIT ROUTES (USER SIDE)
 // ==========================================
 
-// User uploads a screenshot
+// User submits a screenshot of their transfer
 router.post('/deposit/manual', verifyToken, upload.single('receipt'), async (req, res) => {
     try {
-        console.log('[Manual Deposit] Request received.');
         const { amount } = req.body;
         const userId = req.user.id;
         const file = req.file;
@@ -55,35 +51,52 @@ router.post('/deposit/manual', verifyToken, upload.single('receipt'), async (req
             return res.status(400).json({ success: false, message: "Please upload the payment receipt screenshot." });
         }
         
-        // Ensure amount is valid
         if (!amount || Number(amount) < 500) {
              return res.status(400).json({ success: false, message: "Valid amount is required (Min: ₦500)." });
         }
 
-        console.log(`[Manual Deposit] User: ${userId}, Amount: ${amount}, File: ${file.path}`);
-        
-        // This saves the transaction with the Cloudinary image link
         const result = await createManualDeposit(userId, amount, file.path);
 
         res.status(200).json({ 
             success: true, 
-            message: "Receipt submitted successfully! Admin will verify and credit your wallet shortly.", 
+            message: "Receipt submitted! Peter will verify and credit your wallet shortly.", 
             data: result 
         });
 
     } catch (err) {
         console.error("[Manual Deposit] Error:", err.message);
-        // Special message to help you debug during deployment
-        const errorMsg = err.message.includes('Cloudinary') ? "Cloudinary API Keys missing in Render settings." : "Failed to submit receipt.";
-        res.status(500).json({ success: false, message: errorMsg });
+        res.status(500).json({ success: false, message: "Failed to submit receipt." });
     }
 });
 
-// --- ADMIN ROUTE TO FETCH PENDING RECEIPTS ---
-// This provides the data for your Admin Dashboard "Receipt Watch" table
+// ==========================================
+// 3. MANUAL WITHDRAWAL ROUTES (USER SIDE)
+// ==========================================
+
+// User requests a payout to their bank
+router.post("/withdraw", verifyToken, async (req, res) => {
+  try {
+    const { amount, bank_name, account_number, account_name, pin } = req.body;
+    
+    if (!pin) return res.status(400).json({ success: false, message: "Withdrawal PIN is required" });
+    
+    // Validate Transaction PIN before proceeding
+    await verifyWithdrawalPin(req.user.id, pin);
+    
+    const result = await requestWithdrawal(req.user.id, amount, bank_name, account_number, account_name);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
+// 4. ADMIN MANAGEMENT ROUTES (PETER SIDE)
+// ==========================================
+
+// Admin fetches all pending receipt uploads
 router.get('/deposits/pending', verifyToken, verifyAdmin, async (req, res) => {
     try {
-        // We join with the users table to get the email for your Quick Fund form
         const query = `
             SELECT t.*, u.email, u.full_name 
             FROM transactions t 
@@ -95,92 +108,37 @@ router.get('/deposits/pending', verifyToken, verifyAdmin, async (req, res) => {
         res.status(200).json({ success: true, deposits: rows });
     } catch (err) {
         console.error("[Admin Pending Deposits] Error:", err.message);
-        res.status(500).json({ success: false, message: "Failed to fetch pending deposits. Ensure DB is fixed." });
+        res.status(500).json({ success: false, message: "Failed to fetch pending deposits." });
     }
 });
 
-
-// ==========================================
-// 3. EXISTING FLUTTERWAVE & HISTORY ROUTES
-// ==========================================
-
-// User initiates payment (Flutterwave)
-router.post('/initialize', verifyToken, async (req, res) => {
-  try {
-    const {amount} = req.body;
-    const {id: userId, email, phone } = req.user;
-    const data = await initializePayment(userId, amount, email, phone);
-    res.status(200).json({ success: true, message: 'Payment initialized', data });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Force Check Route
-router.post('/confirm', verifyToken, async (req, res) => {
-    try {
-        const { reference } = req.body;
-        const result = await verifyTransactionManual(reference);
-        res.status(200).json(result);
-    } catch (err) {
-        res.status(400).json({ success: false, message: err.message });
-    }
-});
-
-// Webhook
-router.post("/verify", async (req, res) => {
-  try {
-    const signature = req.headers["verif-hash"];
-    const secret = process.env.FLW_SECRET_HASH;
-    if (!signature || signature !== secret) return res.status(401).json({ success: false, message: "Invalid signature" });
-    const data = req.body;
-    await verifyPayment({ data }); 
-    res.status(200).json({ success: true });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
-
-// Get user balance
-router.get('/balance/:id', verifyToken, async (req, res) => {  
-  try {
-    const { id } = req.params; 
-    const balance = await getUserBalance(id);
-    return res.json({ balance });
-  } catch (err) {
-     return res.status(500).json({ message: 'Server error' }); 
-  }
-});
-
-// WITHDRAWAL REQUEST
-router.post("/withdraw", verifyToken, async (req, res) => {
-  try {
-    const { amount, bank_name, account_number, account_name, pin } = req.body;
-    if (!pin) return res.status(400).json({ success: false, message: "Withdrawal PIN is required" });
-    
-    // Safety check for PIN
-    await verifyWithdrawalPin(req.user.id, pin);
-    
-    const result = await requestWithdrawal(req.user.id, amount, bank_name, account_number, account_name);
-    res.status(200).json({ success: true, ...result });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
-
-// Admin approves/rejects withdrawal
-router.patch("/approve/:reference", verifyToken, verifyAdmin, async (req, res) => {
+/**
+ * PETER ACTION: Approve or Reject Withdrawal
+ * This route is now purely manual logic (No Flutterwave)
+ */
+router.post("/approve/:reference", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { reference } = req.params;
-    const { approve } = req.body;
-    const result = await approveWithdrawal(reference, approve);
+    const { approve } = req.body; // Boolean from Frontend
+
+    let result;
+    if (approve) {
+        result = await approveWithdrawal(reference);
+    } else {
+        result = await rejectWithdrawal(reference);
+    }
+
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
 });
 
-// History Routes
+// ==========================================
+// 5. TRANSACTION HISTORY ROUTES
+// ==========================================
+
+// Unified history for the home screen
 router.get("/history", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -191,6 +149,7 @@ router.get("/history", verifyToken, async (req, res) => {
   }
 });
 
+// Filtered withdrawal records
 router.get("/withdrawals", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -201,6 +160,7 @@ router.get("/withdrawals", verifyToken, async (req, res) => {
   }
 });
 
+// Filtered deposit records
 router.get("/deposits", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
