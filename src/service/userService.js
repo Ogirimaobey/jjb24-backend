@@ -178,41 +178,28 @@ export const verifyUserOtp = async (email, otp) => {
  };
 };
 
-// --- UPDATED LOGIN USER (IDENTIFIER HANDSHAKE FIXED) ---
+// --- LOGIN USER ---
 export const loginUser = async ({ email, phone, password }) => {
  let user;
- 
- // 1. Find User with strict normalization
  if (email && email.trim() !== "") {
      const cleanEmail = email.toLowerCase().trim();
-     console.log(`[Login] Searching for email: ${cleanEmail}`);
      user = await findUserByEmail(cleanEmail);
  } 
  
  if (!user && phone && phone.trim() !== "") {
      const cleanPhone = phone.trim();
-     console.log(`[Login] Searching for phone: ${cleanPhone}`);
      user = await findUserByPhone(cleanPhone);
  }
 
- // 2. Validate existence
- if (!user) {
-     console.error(`[Login Failed] User not found for input: ${email || phone}`);
-     throw new Error('Invalid credentials');
- }
+ if (!user) throw new Error('Invalid credentials');
 
- // 3. Status check
  if (user.is_blocked || user.account_status === 'suspended' || user.account_status === 'blocked') {
      throw new Error(`Account ${user.account_status || 'blocked'}: ${user.block_reason || 'Contact Support'}`);
  }
 
- // 4. Password comparison using bcryptjs
  const isMatch = await bcrypt.compare(password, user.password_hash);
- console.log(`[Login] ${user.email} - Password Match: ${isMatch}`);
-
  if (!isMatch) throw new Error('Invalid credentials');
 
- // 5. Token Generation (Explicitly mapping is_admin for frontend)
  const userRole = user.is_admin ? 'admin' : (user.role || 'user');
  const token = jwt.sign(
      { id: user.id, email: user.email, role: userRole, is_admin: !!user.is_admin }, 
@@ -232,8 +219,6 @@ export const loginUser = async ({ email, phone, password }) => {
      } 
  };
 };
-
-// --- REST OF THE FUNCTIONS REMAIN THE SAME ---
 
 // --- GET BALANCE ---
 export const getUserBalance = async (userId) => {
@@ -373,31 +358,22 @@ export const getUserReferralData = async (userId) => {
  }
 };
 
-// --- GET DASHBOARD DATA ---
+// --- GET DASHBOARD DATA (FIXED MIRROR) ---
 export const getUserDashboardData = async (userId) => {
  const investments = await getAllInvestmentsByUserId(userId);
  const activeInvestments = investments.map(inv => {
-  const created = new Date(inv.created_at);
-  const now = new Date();
-  const diffTime = Math.abs(now - created);
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-  
-  const duration = inv.duration || 30;
-  const daysLeft = Math.max(0, duration - diffDays);
-  
-  let status = inv.status || 'active';
-  if (daysLeft === 0 && status === 'active') status = 'completed';
-
+  // FIXED: No more manual math. Trust the database "days_left" we fixed.
+  // FIXED: Standardize keys to lowercase as expected by Frontend main.js
   return {
     id: inv.id,
-    itemname: inv.itemName,
+    itemname: inv.itemname,
     daily_earning: inv.daily_earning,
     total_earning: inv.total_earning,
     price: inv.price,
-    days_left: daysLeft,
-    status: status
+    days_left: inv.days_left,
+    status: inv.status || 'active'
   };
- }).filter(i => i.status === 'active');
+ });
 
  return { active_investments: activeInvestments };
 };
