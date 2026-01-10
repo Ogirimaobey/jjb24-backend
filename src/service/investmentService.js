@@ -6,7 +6,9 @@ import { getVipByIdQuery } from '../repositories/vipRepository.js';
 import { createInvestmentTransaction, createReferralBonusTransaction, createInvestmentRoiTransaction } from '../repositories/transactionRepository.js';
 import { distributeInvestmentCommissions } from './userService.js'; 
 
-// Create investment for User (Standard Items)
+// ==========================================
+// 1. STANDARD INVESTMENT LOGIC
+// ==========================================
 export const createInvestment = async (userId, itemId) => {
   const client = await pool.connect();
   try {
@@ -19,31 +21,33 @@ export const createInvestment = async (userId, itemId) => {
     const item = rows[0];
     if (!item) throw new Error('Item not found');
 
-    if (Number(user.balance) < Number(item.price)) {
+    const itemPrice = Number(item.price);
+    if (Number(user.balance) < itemPrice) {
       throw new Error('Insufficient balance to make this investment');
     }
 
-    const newUserBalance = Number(user.balance) - Number(item.price);
+    const newUserBalance = Number(user.balance) - itemPrice;
     await updateUserBalance(user.id, newUserBalance, client);
 
+    // UNIVERSAL MIRROR: Save standard item ID and clear VIP ID
     const investment = await insertInvestment(
       {
         userId,
         itemId: item.id,              
         casperVipId: null,        
-        dailyEarning: item.dailyincome,
+        dailyEarning: Number(item.dailyincome),
         totalEarning: 0,
         duration: item.duration || 35,
-        price: item.price, 
+        price: itemPrice, 
         status: 'active' 
       },
       client
     );
 
-    await createInvestmentTransaction(user.id, item.price, investment.id, client);
+    await createInvestmentTransaction(user.id, itemPrice, investment.id, client);
 
     try {
-        await distributeInvestmentCommissions(user.id, Number(item.price));
+        await distributeInvestmentCommissions(user.id, itemPrice);
     } catch (commError) {
         console.error(`[MLM Error] Commission failure: ${commError.message}`);
     }
@@ -58,7 +62,9 @@ export const createInvestment = async (userId, itemId) => {
   }
 };
 
-// Create CASPERVIP investment for User
+// ==========================================
+// 2. VIP INVESTMENT LOGIC (CHAMDOR KILLER)
+// ==========================================
 export const createVipInvestment = async (userId, vipId) => {
   const client = await pool.connect();
   try {
@@ -70,30 +76,34 @@ export const createVipInvestment = async (userId, vipId) => {
     const vip = rows[0];
     if (!vip) throw new Error('CASPERVIP product not found');
 
-    if (Number(user.balance) < Number(vip.price)) {
+    const vipPrice = Number(vip.price);
+    if (Number(user.balance) < vipPrice) {
       throw new Error('Insufficient balance to make this investment');
     }
-    const newUserBalance = Number(user.balance) - Number(vip.price);
+
+    const newUserBalance = Number(user.balance) - vipPrice;
     await updateUserBalance(user.id, newUserBalance, client);
 
+    // UNIVERSAL MIRROR: Save VIP ID and explicitly set item_id to NULL
+    // This stops VIPs from showing up as 'Chamdor 1'
     const investment = await insertInvestment(
       {
         userId,
         itemId: null,              
         casperVipId: vip.id,        
-        dailyEarning: vip.daily_earnings,
+        dailyEarning: Number(vip.daily_earnings),
         totalEarning: 0,
-        duration: vip.duration || 35,
-        price: vip.price, 
+        duration: vip.duration_days || 30, // VIPs usually 30 days
+        price: vipPrice, 
         status: 'active'
       },
       client
     );
 
-    await createInvestmentTransaction(user.id, vip.price, investment.id, client);
+    await createInvestmentTransaction(user.id, vipPrice, investment.id, client);
 
     try {
-        await distributeInvestmentCommissions(user.id, Number(vip.price));
+        await distributeInvestmentCommissions(user.id, vipPrice);
     } catch (commError) {
         console.error(`[MLM Error] VIP Commission failure: ${commError.message}`);
     }
@@ -108,7 +118,9 @@ export const createVipInvestment = async (userId, vipId) => {
   }
 };
 
-// Process daily earnings logic
+// ==========================================
+// 3. YIELD PROCESSING LOGIC
+// ==========================================
 export const processDailyEarnings = async () => {
   const investments = await getAllInvestments(); 
 
@@ -119,20 +131,20 @@ export const processDailyEarnings = async () => {
     const user = await findUserById(user_id);
     if (!user) continue;
 
-    const newBalance = Number(user.balance) + Number(daily_earning);
+    const dailyYield = Number(daily_earning);
+    const newBalance = Number(user.balance) + dailyYield;
     await updateUserBalance(user.id, newBalance);
 
-    const newTotalEarning = Number(total_earning) + Number(daily_earning);
+    const newTotalEarning = Number(total_earning) + dailyYield;
     await updateInvestmentEarnings(id, newTotalEarning);
 
-    await createInvestmentRoiTransaction(user_id, daily_earning, id);
+    await createInvestmentRoiTransaction(user_id, dailyYield, id);
   }
 };
 
-/**
- * FIXED USER INVESTMENTS FETCH
- * Mirroring keys to ensure Frontend never sees 'null' or '8k'
- */
+// ==========================================
+// 4. DATA FETCH HANDSHAKE (SYNCED WITH MAIN.JS)
+// ==========================================
 export const getUserInvestments = async (userId) => {
   const user = await findUserById(userId);
   if (!user) throw new Error('User not found');
@@ -143,7 +155,6 @@ export const getUserInvestments = async (userId) => {
   let totalDailyIncome = 0;
 
   const formattedInvestments = investments.map(investment => {
-    // Force values to numbers from Repository columns
     const priceValue = Number(investment.price) || 0;
     const dailyValue = Number(investment.daily_earning || investment.dailyincome) || 0;
     const daysRemaining = (investment.days_left !== undefined && investment.days_left !== null) ? Number(investment.days_left) : 0;
@@ -155,13 +166,13 @@ export const getUserInvestments = async (userId) => {
 
     return {
       id: investment.id,
-      // REDUNDANT KEYS: Ensuring Frontend handshake never fails
+      // REDUNDANT SYNC: These keys match the frontend's search priority
       itemname: investment.itemname || 'Winery Plan',
       itemName: investment.itemname || 'Winery Plan', 
       
-      price: priceValue,                 // The 500k fix
-      investmentAmount: priceValue,      // Fallback key
-      amount: priceValue,                // Fallback key
+      price: priceValue,                  
+      investmentAmount: priceValue,      
+      amount: priceValue,                
       
       daily_earning: dailyValue,
       dailyYield: dailyValue,
@@ -170,8 +181,8 @@ export const getUserInvestments = async (userId) => {
       total_earning: Number(investment.total_earning) || 0,
       totalAccumulated: Number(investment.total_earning) || 0,
       
-      days_left: daysRemaining,          // The null fix
-      daysLeft: daysRemaining,           // Fallback key
+      days_left: daysRemaining,          
+      daysLeft: daysRemaining,           
       
       status: investment.status || 'active',
       start_date: investment.start_date
@@ -190,11 +201,6 @@ export const getUserInvestments = async (userId) => {
 export const getUserEarningsSummary = async (userId) => {
   try {
     const investments = await getAllInvestmentsByUserId(userId);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
     let todayEarnings = 0;
     let yesterdayEarnings = 0;
     let totalEarnings = 0;
@@ -235,7 +241,7 @@ export const getRewardHistory = async (userId) => {
     let sourceMap = {};
     if (investmentIds.length > 0) {
       const sourceQuery = `
-        SELECT i.id, COALESCE(it.itemname, cv.name) as source_name
+        SELECT i.id, COALESCE(cv.name, it.itemname) as source_name
         FROM investments i
         LEFT JOIN items it ON i.item_id = it.id
         LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
@@ -261,7 +267,7 @@ export const getRewardHistory = async (userId) => {
     });
 
     const referralQuery = `
-      SELECT t.id, t.amount, t.created_at as date, t.reference
+      SELECT t.id, t.amount, t.created_at as date, t.reference, t.description
       FROM transactions t
       WHERE t.user_id = $1 AND t.type = 'referral_bonus' AND t.status = 'success'
       ORDER BY t.created_at DESC
@@ -269,33 +275,15 @@ export const getRewardHistory = async (userId) => {
     const referralResult = await pool.query(referralQuery, [userId]);
     
     const referralRewards = referralResult.rows.map(row => {
-      const match = row.reference ? row.reference.match(/REF-(\d+)-/) : null;
-      const referredUserId = match ? parseInt(match[1]) : null;
-      
       return {
         id: `ref_${row.id}`,
         date: row.date,
         amount: parseFloat(row.amount || 0),
         source: `Referral Bonus`,
         type: 'referral_bonus',
-        description: row.description || `Referral commission`,
-        referred_user_id: referredUserId
+        description: row.description || `Referral commission`
       };
     });
-    
-    const referredUserIds = referralRewards.map(r => r.referred_user_id).filter(id => id !== null);
-    if (referredUserIds.length > 0) {
-      const userQuery = `SELECT id, full_name FROM users WHERE id = ANY($1::int[])`;
-      const userResult = await pool.query(userQuery, [referredUserIds]);
-      const userMap = {};
-      userResult.rows.forEach(u => { userMap[u.id] = u.full_name; });
-      
-      referralRewards.forEach(r => {
-        if (r.referred_user_id && userMap[r.referred_user_id]) {
-          r.source = `Referral: ${userMap[r.referred_user_id]}`;
-        }
-      });
-    }
 
     const allRewards = [...investmentRewards, ...referralRewards].sort((a, b) => new Date(b.date) - new Date(a.date));
 
