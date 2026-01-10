@@ -1,7 +1,11 @@
-// CASPERVIP Repository - Database queries for CASPERVIP products
+import pool from '../config/database.js';
+
+// ==========================================
+// 1. ADMIN VIP MANAGEMENT QUERIES
+// ==========================================
 
 /**
- * Insert a new VIP product.
+ * MANUAL UPLOAD: Peter adds a new VIP plan.
  * Columns: name, price, daily_earnings, duration_days, total_returns, image
  */
 export const insertVipQuery = `
@@ -11,7 +15,7 @@ export const insertVipQuery = `
 `;
 
 /**
- * Fetch all VIP products sorted by newest first.
+ * GET ALL VIPS: Peter views the list of VIP plans sorted by newest.
  */
 export const getAllVipsQuery = `
   SELECT * FROM casper_vip
@@ -19,15 +23,15 @@ export const getAllVipsQuery = `
 `;
 
 /**
- * Fetch a single VIP product by its ID.
+ * GET SINGLE VIP: Fetch by ID for editing or details.
  */
 export const getVipByIdQuery = `
   SELECT * FROM casper_vip WHERE id = $1;
 `;
 
 /**
- * Update an existing VIP product.
- * Uses COALESCE for the image to keep existing one if no new image is provided.
+ * MANUAL UPDATE: Peter modifies a VIP plan.
+ * Uses COALESCE for the image to keep the existing one if no new file is uploaded.
  */
 export const updateVipQuery = `
   UPDATE casper_vip 
@@ -40,11 +44,59 @@ export const updateVipQuery = `
       updated_at = CURRENT_TIMESTAMP
   WHERE id = $1
   RETURNING *;
-`;  
+`;
 
 /**
- * Delete a VIP product from the database.
+ * MANUAL REMOVAL: Peter deletes a VIP plan from the platform.
  */
 export const deleteVipQuery = `
   DELETE FROM casper_vip WHERE id = $1;
 `;
+
+// ==========================================
+// 2. REPOSITORY EXPORT FUNCTIONS
+// ==========================================
+
+export const createVip = async (data, imageUrl) => {
+  const { name, price, daily_earnings, duration_days, total_returns } = data;
+  const { rows } = await pool.query(insertVipQuery, [
+    name, 
+    price, 
+    daily_earnings, 
+    duration_days, 
+    total_returns, 
+    imageUrl
+  ]);
+  return rows[0];
+};
+
+export const getAllVips = async () => {
+  const { rows } = await pool.query(getAllVipsQuery);
+  return { vips: rows };
+};
+
+export const getVipById = async (id) => {
+  const { rows } = await pool.query(getVipByIdQuery, [id]);
+  if (rows.length === 0) throw new Error("VIP Plan not found");
+  return rows[0];
+};
+
+export const updateVip = async (id, data, imageUrl) => {
+  const { name, price, daily_earnings, duration_days, total_returns } = data;
+  const { rows } = await pool.query(updateVipQuery, [
+    id, 
+    name, 
+    price, 
+    daily_earnings, 
+    duration_days, 
+    total_returns, 
+    imageUrl
+  ]);
+  return rows[0];
+};
+
+export const deleteVip = async (id) => {
+  const result = await pool.query(deleteVipQuery, [id]);
+  if (result.rowCount === 0) throw new Error("VIP Plan not found");
+  return { success: true, message: "VIP Plan removed successfully from database." };
+};
