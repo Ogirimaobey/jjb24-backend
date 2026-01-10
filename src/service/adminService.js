@@ -9,21 +9,45 @@ if (!JWT_SECRET) throw new Error("JWT_SECRET is not defined in environment varia
 
 const SALT_ROUNDS = 10;
 
-/**Login Admin */
+/** Login Admin */
 export const loginAdmin = async (email, password) => {
-  const admin = await findAdminByEmail(email);
-  if (!admin) throw new Error("Invalid email or password");
+  // Normalize email input to lowercase
+  const cleanEmail = email.toLowerCase().trim();
+  
+  console.log(`[Admin Login] Attempting login for: ${cleanEmail}`);
+
+  const admin = await findAdminByEmail(cleanEmail);
+  
+  if (!admin) {
+    console.error(`[Admin Login] No admin record found for email: ${cleanEmail}`);
+    throw new Error("Invalid email or password");
+  }
 
   // Compare using bcryptjs
   const isMatch = await bcrypt.compare(password, admin.password);
-  if (!isMatch) throw new Error("Invalid email or password");
+  
+  if (!isMatch) {
+    console.error(`[Admin Login] Password mismatch for admin: ${cleanEmail}`);
+    throw new Error("Invalid email or password");
+  }
+
+  // Check if this admin record is actually authorized
+  // If your 'admins' table doesn't have an 'is_admin' column, we assume true if they are in this table
+  const isAdminFlag = admin.is_admin !== undefined ? admin.is_admin : true;
 
   // FIXED: Added 'is_admin: true' so the middleware recognizes this user as an admin
   const token = jwt.sign(
-    { id: admin.id, email: admin.email, role: "admin", is_admin: true },
+    { 
+        id: admin.id, 
+        email: admin.email, 
+        role: "admin", 
+        is_admin: isAdminFlag 
+    },
     JWT_SECRET,
     { expiresIn: "1d" }
   );
+
+  console.log(`[Admin Login] Success! Token generated for ID: ${admin.id}`);
 
   return {
     message: "Login successful",
@@ -31,12 +55,12 @@ export const loginAdmin = async (email, password) => {
     admin: {
       id: admin.id,
       email: admin.email,
-      is_admin: true
+      is_admin: isAdminFlag
     }
   };
 };
 
-/**Get Admin Dashboard Stats */
+/** Get Admin Dashboard Stats */
 export const getAdminStats = async () => {
   try {
     const [totalUsers, totalInvestments, totalAmountInvested, recentUsers] = await Promise.all([
@@ -57,7 +81,7 @@ export const getAdminStats = async () => {
   }
 };
 
-/**Get All Users (for admin) */
+/** Get All Users (for admin) */
 export const getAllUsersForAdmin = async () => {
   try {
     const users = await getAllUsers();
@@ -67,7 +91,7 @@ export const getAllUsersForAdmin = async () => {
   }
 };
 
-/**Get All Investments (for admin) */
+/** Get All Investments (for admin) */
 export const getAllInvestmentsForAdmin = async () => {
   try {
     const investments = await getAllInvestmentsWithDetails();
