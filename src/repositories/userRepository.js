@@ -10,7 +10,7 @@ export const insertUser = async ({ fullName, phone, email, password, referralCod
   return rows[0];
 };
 
-// --- FIXED: Added TRIM and normalization for login reliability ---
+// --- NORMALIZATION FOR LOGIN RELIABILITY ---
 export const findUserByPhone = async (phone) => {
   const cleanPhone = phone ? phone.trim() : '';
   const { rows } = await pool.query('SELECT * FROM users WHERE phone_number = $1', [cleanPhone]);
@@ -61,12 +61,21 @@ export const getUserPin = async (userId) => {
   return rows[0]?.withdrawal_pin;
 };
 
-// --- FETCH ACTIVE INVESTMENTS ---
+// --- FETCH ACTIVE INVESTMENTS (FIXED FOR VIP & ACTUAL PRICE) ---
 export const getActiveInvestments = async (userId) => {
   const query = `
-    SELECT i.*, p.itemname, p.duration, p.dailyincome 
+    SELECT 
+      i.*, 
+      CASE 
+        WHEN i.caspervip_id IS NOT NULL THEN cv.name 
+        ELSE it.itemname 
+      END AS "itemname",
+      COALESCE(i.amount, i.price, it.price, cv.price, 0) AS "price",
+      COALESCE(i.daily_earning, it.dailyincome, cv.daily_earnings) AS "dailyincome",
+      GREATEST(0, EXTRACT(DAY FROM (i.end_date - CURRENT_TIMESTAMP))) AS "days_left"
     FROM investments i
-    JOIN items p ON i.plan_id = p.id
+    LEFT JOIN items it ON i.item_id = it.id
+    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
     WHERE i.user_id = $1 AND i.status = 'active'
   `;
   const { rows } = await pool.query(query, [userId]);
