@@ -1,18 +1,18 @@
 import pool from '../config/database.js';
 
-// --- FIX 1: ACCEPT DURATION AND SET END_DATE ---
+// --- FIX 1: ADD STATUS AND USE START_DATE ---
 export const insertInvestment = async (
-  { userId, itemId, casperVipId, dailyEarning, totalEarning, duration }, // Added duration here
+  { userId, itemId, casperVipId, dailyEarning, totalEarning, duration }, 
   client
 ) => {
-  // If no duration is provided, default to 30 to prevent crashes
   const safeDuration = duration || 30;
 
+  // We add 'active' as the default status here
   const { rows } = await client.query(
     `
     INSERT INTO investments
-    (user_id, item_id, caspervip_id, daily_earning, total_earning, start_date, end_date)
-    VALUES ($1, $2, $3, $4, $5, NOW(), NOW() + ($6 || ' days')::interval)
+    (user_id, item_id, caspervip_id, daily_earning, total_earning, start_date, end_date, status)
+    VALUES ($1, $2, $3, $4, $5, NOW(), NOW() + ($6 || ' days')::interval, 'active')
     RETURNING *;
     `,
     [userId, itemId, casperVipId, dailyEarning, totalEarning, safeDuration]
@@ -22,7 +22,8 @@ export const insertInvestment = async (
 };
 
 export const getAllInvestments = async () => {
-  const { rows } = await pool.query('SELECT * FROM investments');
+  // Only get active ones for the background earnings processor
+  const { rows } = await pool.query("SELECT * FROM investments WHERE status = 'active'");
   return rows;
 };
 
@@ -50,13 +51,11 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
   return rows[0];
 };
 
-
 export const deleteInvestment = async (investmentId) => {
   await pool.query('DELETE FROM investments WHERE id = $1', [investmentId]);
 };
 
-// --- FIX 2: FETCH DURATION SO DASHBOARD SEES IT ---
-// Get all investments for a specific user with item details
+// --- FIX 2: REMOVED CREATED_AT (WHICH NO LONGER EXISTS) ---
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
     SELECT 
@@ -65,68 +64,66 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.item_id,
       i.daily_earning,
       i.total_earning,
-      i.created_at,
       i.start_date,
       i.end_date,
+      i.status,
       it.itemname as "itemName",
       it.price,
       it.dailyincome as "dailyIncome",
       it.itemimage as "itemImage",
-      -- Calculate duration dynamically based on the receipt (end - start)
-      -- This ensures that if we extended the date in DB, the user sees the extension.
       EXTRACT(DAY FROM (i.end_date - i.start_date)) as duration
     FROM investments i
-    INNER JOIN items it ON i.item_id = it.id
+    LEFT JOIN items it ON i.item_id = it.id
     WHERE i.user_id = $1
-    ORDER BY i.created_at DESC
+    ORDER BY i.start_date DESC
   `;
   const { rows } = await pool.query(query, [userId]);
   return rows;
 };
 
-// Get all investments with user and item details (for admin)
+// --- FIX 3: ADMIN VIEW UPDATED ---
 export const getAllInvestmentsWithDetails = async () => {
   const query = `
     SELECT 
       i.id,
       i.user_id,
       i.item_id,
-      i.created_at as start_date,
+      i.start_date,
+      i.status,
       u.full_name,
-      it.itemname as plan_name,
-      it.price as investment_amount
+      COALESCE(it.itemname, cv.name) as plan_name,
+      COALESCE(it.price, cv.price) as investment_amount
     FROM investments i
     INNER JOIN users u ON i.user_id = u.id
-    INNER JOIN items it ON i.item_id = it.id
-    ORDER BY i.created_at DESC
+    LEFT JOIN items it ON i.item_id = it.id
+    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
+    ORDER BY i.start_date DESC
   `;
   const { rows } = await pool.query(query);
   return rows;
 };
 
-// Get total investments count
 export const getTotalInvestmentsCount = async () => {
   const { rows } = await pool.query('SELECT COUNT(*) as count FROM investments');
   return parseInt(rows[0].count);
 };
 
-// Get total amount invested (sum of all item prices from investments)
 export const getTotalAmountInvested = async () => {
   const query = `
-    SELECT COALESCE(SUM(it.price), 0) as total
+    SELECT COALESCE(SUM(COALESCE(it.price, cv.price)), 0) as total
     FROM investments i
-    INNER JOIN items it ON i.item_id = it.id
+    LEFT JOIN items it ON i.item_id = it.id
+    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
   `;
   const { rows } = await pool.query(query);
   return parseFloat(rows[0].total) || 0;
 };
 
-// Get investment earnings history for reward history
 export const getInvestmentEarningsHistory = async (userId) => {
   const query = `
     SELECT 
       i.id,
-      i.created_at as date,
+      i.start_date as date,
       i.daily_earning,
       i.total_earning,
       COALESCE(it.itemname, cv.name) as source_name,
@@ -135,7 +132,7 @@ export const getInvestmentEarningsHistory = async (userId) => {
     LEFT JOIN items it ON i.item_id = it.id
     LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
     WHERE i.user_id = $1
-    ORDER BY i.created_at DESC
+    ORDER BY i.start_date DESC
   `;
   const { rows } = await pool.query(query, [userId]);
   return rows;
