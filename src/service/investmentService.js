@@ -29,7 +29,6 @@ export const createInvestment = async (userId, itemId) => {
     const newUserBalance = Number(user.balance) - itemPrice;
     await updateUserBalance(user.id, newUserBalance, client);
 
-    // UNIVERSAL MIRROR: Save standard item ID and duration
     const investment = await insertInvestment(
       {
         userId,
@@ -63,7 +62,7 @@ export const createInvestment = async (userId, itemId) => {
 };
 
 // ==========================================
-// 2. VIP INVESTMENT LOGIC (CHAMDOR KILLER)
+// 2. VIP INVESTMENT LOGIC
 // ==========================================
 export const createVipInvestment = async (userId, vipId) => {
   const client = await pool.connect();
@@ -84,7 +83,6 @@ export const createVipInvestment = async (userId, vipId) => {
     const newUserBalance = Number(user.balance) - vipPrice;
     await updateUserBalance(user.id, newUserBalance, client);
 
-    // UNIVERSAL MIRROR: Save VIP ID and set item_id to NULL
     const investment = await insertInvestment(
       {
         userId,
@@ -118,26 +116,18 @@ export const createVipInvestment = async (userId, vipId) => {
 };
 
 // ==========================================
-// 3. YIELD PROCESSING LOGIC (DAILY EARNINGS)
+// 3. YIELD PROCESSING LOGIC
 // ==========================================
-/**
- * DURATION SAFEGUARD: This loop now checks if the plan has expired
- * before paying out. It automatically stops earnings at 0 days.
- */
 export const processDailyEarnings = async () => {
-  console.log(`[Yield Engine] Starting Daily Credit Run: ${new Date().toISOString()}`);
-  
+  console.log(`[Yield Engine] Starting Daily Run: ${new Date().toISOString()}`);
   const investments = await getAllInvestments(); 
 
   for (const investment of investments) {
     const { id, user_id, daily_earning, total_earning, status, end_date } = investment;
-    
-    // Safety check: Skip if already inactive
     if (status !== 'active') continue;
 
     // EXPIRATION CHECK: If current time is past the end_date, kill the plan
     if (new Date() > new Date(end_date)) {
-        console.log(`[Yield Engine] Plan ${id} has expired. Marking as completed.`);
         await pool.query("UPDATE investments SET status = 'completed' WHERE id = $1", [id]);
         continue;
     }
@@ -147,27 +137,17 @@ export const processDailyEarnings = async () => {
 
     const dailyYield = Number(daily_earning);
     const newBalance = Number(user.balance) + dailyYield;
-    
-    try {
-        // 1. Credit User Wallet
-        await updateUserBalance(user.id, newBalance);
+    await updateUserBalance(user.id, newBalance);
 
-        // 2. Update Investment Accumulated Earnings
-        const newTotalEarning = Number(total_earning) + dailyYield;
-        await updateInvestmentEarnings(id, newTotalEarning);
+    const newTotalEarning = Number(total_earning) + dailyYield;
+    await updateInvestmentEarnings(id, newTotalEarning);
 
-        // 3. Create Transaction Log for "My Rewards"
-        await createInvestmentRoiTransaction(user_id, dailyYield, id);
-        
-        console.log(`[Yield Engine] Paid ₦${dailyYield} to User ${user_id} for Plan ${id}`);
-    } catch (error) {
-        console.error(`[Yield Engine] Failed to process Plan ${id}: ${error.message}`);
-    }
+    await createInvestmentRoiTransaction(user_id, dailyYield, id);
   }
 };
 
 // ==========================================
-// 4. DATA FETCH HANDSHAKE (SYNCED WITH MAIN.JS)
+// 4. DATA FETCH HANDSHAKE (MIRROR LOGIC)
 // ==========================================
 export const getUserInvestments = async (userId) => {
   const user = await findUserById(userId);
@@ -178,38 +158,38 @@ export const getUserInvestments = async (userId) => {
   let totalInvestmentAmount = 0;
   let totalDailyIncome = 0;
 
-  const formattedInvestments = investments.map(investment => {
-    const priceValue = Number(investment.price) || 0;
-    const dailyValue = Number(investment.daily_earning || 0);
-    const daysRemaining = Number(investment.days_left) || 0;
+  const formattedInvestments = investments.map(inv => {
+    // FORCE MIRROR DATA: Prioritize names and prices from the database row
+    const displayName = inv.itemname || inv.itemName || 'Winery Plan';
+    const actualPrice = Number(inv.price || inv.amount || 0);
+    const dailyValue = Number(inv.daily_earning || 0);
+    const daysRemaining = Number(inv.days_left) || 0;
     
-    totalInvestmentAmount += priceValue;
-    if (investment.status === 'active') {
+    totalInvestmentAmount += actualPrice;
+    if (inv.status === 'active') {
         totalDailyIncome += dailyValue;
     }
 
     return {
-      id: investment.id,
-      // REDUNDANT SYNC: These keys match the frontend's search priority in main.js
-      itemname: investment.itemname || 'Winery Plan',
-      itemName: investment.itemname || 'Winery Plan', 
+      id: inv.id,
+      itemname: displayName,
+      itemName: displayName, 
       
-      price: priceValue,                  
-      investmentAmount: priceValue,      
-      amount: priceValue,                
+      price: actualPrice,                  
+      investmentAmount: actualPrice,      
+      amount: actualPrice,                
       
       daily_earning: dailyValue,
       dailyYield: dailyValue,
-      dailyIncome: dailyValue,
       
-      total_earning: Number(investment.total_earning) || 0,
-      totalAccumulated: Number(investment.total_earning) || 0,
+      total_earning: Number(inv.total_earning) || 0,
+      totalAccumulated: Number(inv.total_earning) || 0,
       
       days_left: daysRemaining,          
       daysLeft: daysRemaining,           
       
-      status: investment.status || 'active',
-      start_date: investment.start_date
+      status: inv.status || 'active',
+      start_date: inv.start_date
     };
   });
 
@@ -229,13 +209,13 @@ export const getUserEarningsSummary = async (userId) => {
     let yesterdayEarnings = 0;
     let totalEarnings = 0;
     
-    investments.forEach(investment => {
-      const dailyEarning = Number(investment.daily_earning) || 0;
-      if (investment.status === 'active') {
-        todayEarnings += dailyEarning;
-        yesterdayEarnings += dailyEarning;
+    investments.forEach(inv => {
+      const daily = Number(inv.daily_earning) || 0;
+      if (inv.status === 'active') {
+        todayEarnings += daily;
+        yesterdayEarnings += daily;
       }
-      totalEarnings += Number(investment.total_earning) || 0;
+      totalEarnings += Number(inv.total_earning) || 0;
     });
     
     return { today: todayEarnings, yesterday: yesterdayEarnings, total: totalEarnings };
@@ -276,16 +256,14 @@ export const getRewardHistory = async (userId) => {
     `;
     const referralResult = await pool.query(referralQuery, [userId]);
     
-    const referralRewards = referralResult.rows.map(row => {
-      return {
+    const referralRewards = referralResult.rows.map(row => ({
         id: `ref_${row.id}`,
         date: row.date,
         amount: parseFloat(row.amount || 0),
         source: `Referral Bonus`,
         type: 'referral_bonus',
         description: row.description || `Referral commission`
-      };
-    });
+    }));
 
     const allRewards = [...investmentRewards, ...referralRewards].sort((a, b) => new Date(b.date) - new Date(a.date));
 
