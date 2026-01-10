@@ -44,8 +44,7 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
 
 /**
  * FIX 2: Universal User Investment Fetch
- * MIRRORED NAMES: Matches Service and Frontend exactly.
- * This pulls the actual price paid (500k) and the calculated days left.
+ * CRASH FIX: Changed cv.duration to cv.duration_days
  */
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
@@ -60,10 +59,11 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.end_date,
       i.status,
       COALESCE(it.itemname, cv.name, 'Winery Plan') AS "itemname",
-      COALESCE(i.price, i.amount, it.price, 0) AS "price",
+      COALESCE(i.price, i.amount, it.price, cv.price, 0) AS "price",
       COALESCE(it.dailyincome, cv.daily_earnings, i.daily_earning) AS "daily_earning",
-      COALESCE(it.itemimage, 'https://res.cloudinary.com/dja8976/image/upload/v1/default-plan.png') AS "itemimage",
-      COALESCE(i.duration, it.duration, cv.duration) AS "duration",
+      COALESCE(it.itemimage, cv.image, 'https://res.cloudinary.com/dja8976/image/upload/v1/default-plan.png') AS "itemimage",
+      -- FIXED: Changed cv.duration to cv.duration_days to match vipRepository
+      COALESCE(i.duration, it.duration, cv.duration_days) AS "duration",
       COALESCE(i.days_left, EXTRACT(DAY FROM (i.end_date - CURRENT_DATE))) AS "days_left"
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
@@ -77,7 +77,6 @@ export const getAllInvestmentsByUserId = async (userId) => {
 
 /**
  * FIX 3: Global Admin Stats
- * Sums the actual volume using COALESCE for accuracy.
  */
 export const getTotalAmountInvested = async () => {
   const query = `
