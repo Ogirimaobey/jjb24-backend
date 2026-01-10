@@ -3,7 +3,6 @@ import pool from '../config/database.js';
 /**
  * FIX 1: Universal Insert
  * Works for both standard Items and VIP products.
- * Uses the duration provided at purchase to set end_date.
  */
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
@@ -45,9 +44,8 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
 
 /**
  * FIX 2: Universal User Investment Fetch
- * - Joins both items and casper_vip tables.
- * - Prioritizes the price/amount in the investment record (Fixes the 8k error).
- * - Pulls the hard days_left number from the DB (Fixes the null error).
+ * - Removed cv.image_url to prevent "column does not exist" crash.
+ * - Safely handles both Item and VIP table joins.
  */
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
@@ -62,11 +60,12 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.end_date,
       i.status,
       COALESCE(it.itemname, cv.name, 'Investment Plan') as itemname,
-      COALESCE(i.price, i.amount, it.price, cv.price, 0) as price,
-      COALESCE(i.price, i.amount, it.price, cv.price, 0) as amount,
-      COALESCE(it.dailyincome, cv.daily_earnings, i.daily_earning) as dailyincome,
-      COALESCE(it.itemimage, cv.image_url) as itemimage,
-      COALESCE(i.duration, it.duration, cv.duration) as duration,
+      COALESCE(i.price, i.amount, it.price, 0) as price,
+      COALESCE(i.price, i.amount, it.price, 0) as amount,
+      COALESCE(it.dailyincome, i.daily_earning) as dailyincome,
+      -- Safely check for item image, otherwise use a placeholder
+      COALESCE(it.itemimage, 'https://res.cloudinary.com/dja8976/image/upload/v1/default-plan.png') as itemimage,
+      COALESCE(i.duration, it.duration) as duration,
       COALESCE(i.days_left, EXTRACT(DAY FROM (i.end_date - CURRENT_DATE))) as days_left
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
@@ -80,7 +79,6 @@ export const getAllInvestmentsByUserId = async (userId) => {
 
 /**
  * FIX 3: Global Admin Stats
- * Correctly sums volume from the verified price/amount columns.
  */
 export const getTotalAmountInvested = async () => {
   const query = `
