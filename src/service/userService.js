@@ -178,7 +178,7 @@ export const verifyUserOtp = async (email, otp) => {
  };
 };
 
-// --- LOGIN USER ---
+// --- LOGIN USER (FIXED FOR ADMIN AUTHORIZATION) ---
 export const loginUser = async ({ email, phone, password }) => {
  let user;
  if (email && email.trim() !== "") {
@@ -200,9 +200,16 @@ export const loginUser = async ({ email, phone, password }) => {
  const isMatch = await bcrypt.compare(password, user.password_hash);
  if (!isMatch) throw new Error('Invalid credentials');
 
+ // ADDED: Explicit Role Mapping so Admin functions recognize Peter
  const userRole = user.is_admin ? 'admin' : (user.role || 'user');
+
  const token = jwt.sign(
-     { id: user.id, email: user.email, role: userRole, is_admin: !!user.is_admin }, 
+     { 
+        id: user.id, 
+        email: user.email, 
+        role: userRole, // Required for withdrawal approval routes
+        is_admin: !!user.is_admin 
+     }, 
      process.env.JWT_SECRET, 
      { expiresIn: '7d' }
  );
@@ -358,35 +365,45 @@ export const getUserReferralData = async (userId) => {
  }
 };
 
-// --- GET DASHBOARD DATA ---
-// REDUNDANT SYNC FIX: Mirroring all possible key names for itemname, price, and days_left
+// --- GET DASHBOARD DATA (FIXED FOR CHAMDOR & PRICE ERRORS) ---
 export const getUserDashboardData = async (userId) => {
- const investments = await getAllInvestmentsByUserId(userId);
- 
- const activeInvestments = investments.map(inv => {
-    // REDUNDANT NAMING: itemname (lowercase) and itemName (CamelCase)
-    const name = inv.itemname || inv.itemName || 'Winery Plan';
-    const amount = Number(inv.price || inv.amount) || 0;
-    const remainingDays = (inv.days_left !== undefined && inv.days_left !== null) ? Number(inv.days_left) : 0;
+ try {
+    const investments = await getAllInvestmentsByUserId(userId);
+    
+    // REDUNDANT SYNC: We send multiple key names to ensure main.js handshake is perfect
+    const activeInvestments = investments.map(inv => {
+        const cleanName = inv.itemname || inv.itemName || 'Winery Plan';
+        const cleanPrice = Number(inv.price || inv.amount) || 0;
+        const cleanDays = (inv.days_left !== undefined) ? Number(inv.days_left) : 0;
 
-    return {
-        id: inv.id,
-        itemname: name,
-        itemName: name,
-        price: amount,
-        amount: amount,
-        investmentAmount: amount,
-        daily_earning: Number(inv.daily_earning) || 0,
-        dailyYield: Number(inv.daily_earning) || 0,
-        total_earning: Number(inv.total_earning) || 0,
-        totalAccumulated: Number(inv.total_earning) || 0,
-        days_left: remainingDays,
-        daysLeft: remainingDays,
-        status: inv.status || 'active'
-    };
- });
+        return {
+            id: inv.id,
+            // Both lowercase and CamelCase to be safe
+            itemname: cleanName,
+            itemName: cleanName,
+            
+            price: cleanPrice,
+            amount: cleanPrice,
+            investmentAmount: cleanPrice,
+            
+            daily_earning: Number(inv.daily_earning) || 0,
+            dailyYield: Number(inv.daily_earning) || 0,
+            
+            total_earning: Number(inv.total_earning) || 0,
+            totalAccumulated: Number(inv.total_earning) || 0,
+            
+            days_left: cleanDays,
+            daysLeft: cleanDays,
+            
+            status: inv.status || 'active'
+        };
+    });
 
- return { active_investments: activeInvestments };
+    return { active_investments: activeInvestments };
+ } catch (err) {
+    console.error("[Dashboard Fetch Error]", err);
+    throw err;
+ }
 };
 
 // --- Edit Email ---
