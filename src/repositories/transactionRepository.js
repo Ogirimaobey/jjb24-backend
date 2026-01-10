@@ -1,6 +1,6 @@
 import pool from '../config/database.js';
 
-// UPDATED: Added client support to ensure ID sequence stability
+// Generic transaction creator (mainly for automated successful entries like credits)
 export const createTransaction = async (userId, amount, reference, type = 'deposit', receiptUrl = null, client = null) => {
   const query = client ? client.query.bind(client) : pool.query.bind(pool);
   const result = await query(
@@ -47,6 +47,7 @@ export const createInvestmentTransaction = async (userId, amount, investmentId, 
   return result.rows[0];
 };
 
+// MANDATORY FOR PETER: Saves bank details for manual payout
 export const createWithdrawalTransaction = async (userId, amount, reference, bankName, accountNumber, accountName, client = null) => {
   const query = client ? client.query.bind(client) : pool.query.bind(pool);
   const result = await query(
@@ -57,12 +58,6 @@ export const createWithdrawalTransaction = async (userId, amount, reference, ban
     [userId, amount, reference, bankName, accountNumber, accountName]
   );
   return result.rows[0];
-};
-
-export const findTransactionByUserId = async (user_Id) => {
-  const query = `SELECT * FROM transactions WHERE user_id = $1`;
-  const { rows } = await pool.query(query, [user_Id]);
-  return rows[0];
 };
 
 export const findTransactionByReference = async (reference) => {
@@ -79,13 +74,6 @@ export const updateTransactionStatus = async (tx_ref, status) => {
       "UPDATE transactions SET status = $1 WHERE reference = $2 RETURNING *",
       [status, tx_ref]
     );
-
-    if (result.rowCount === 0) {
-      console.error(" Transaction status update failed. No rows affected for tx_ref:", tx_ref);
-    } else {
-      console.log(" Transaction status updated:", result.rows[0]);
-    }
-
     return result;
   } catch (err) {
     console.error(" Error updating transaction status:", err.message);
@@ -93,17 +81,7 @@ export const updateTransactionStatus = async (tx_ref, status) => {
   }
 };
 
-export const createWithdrawal = async (userId, amount, reference, client = null) => {
-  const query = client ? client.query.bind(client) : pool.query.bind(pool);
-  const { rows } = await query(
-    `INSERT INTO transactions (user_id, amount, reference, status, type)
-     VALUES ($1, $2, $3, 'pending', 'withdrawal')
-     RETURNING *;`,
-    [userId, amount, reference]
-  );
-  return rows[0];
-};
-
+// GETTER FOR PETER: Shows everything needed for manual bank transfer
 export const getPendingWithdrawals = async () => {
   const query = `
     SELECT 
@@ -175,6 +153,7 @@ export const getDepositTransactionsByUserId = async (userId) => {
   return rows;
 };
 
+// Logic for manual receipt uploads
 export const createManualDepositRecord = async (userId, amount, reference, receiptUrl) => {
   const query = `
     INSERT INTO transactions (user_id, amount, reference, status, type, receipt_url, created_at)
