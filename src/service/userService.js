@@ -358,13 +358,13 @@ export const getUserReferralData = async (userId) => {
  }
 };
 
-// --- GET DASHBOARD DATA (FIXED MIRROR) ---
+// --- GET DASHBOARD DATA ---
+// FIXED: Mirroring Repository logic exactly. No manual diff calculations.
 export const getUserDashboardData = async (userId) => {
  const investments = await getAllInvestmentsByUserId(userId);
- const activeInvestments = investments.map(inv => {
-  // FIXED: No more manual math. Trust the database "days_left" we fixed.
-  // FIXED: Standardize keys to lowercase as expected by Frontend main.js
-  return {
+ 
+ // We map all returned investments to ensure they appear on screen.
+ const activeInvestments = investments.map(inv => ({
     id: inv.id,
     itemname: inv.itemname,
     daily_earning: inv.daily_earning,
@@ -372,8 +372,7 @@ export const getUserDashboardData = async (userId) => {
     price: inv.price,
     days_left: inv.days_left,
     status: inv.status || 'active'
-  };
- });
+ }));
 
  return { active_investments: activeInvestments };
 };
