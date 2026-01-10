@@ -2,14 +2,13 @@ import pool from '../config/database.js';
 
 /**
  * FIX 1: Universal Insert
- * Replicating exactly how the Service provides data.
- * DURATION FIX: Dynamically sets end_date based on the specific plan duration.
+ * Ensures the duration and price are SNAPSHOTTED into the investment row.
+ * This prevents the "Chamdor Default" if shop items are changed later.
  */
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
   client
 ) => {
-  // We use client for transactional safety (BEGIN/COMMIT)
   const { rows } = await client.query(
     `
     INSERT INTO investments
@@ -19,7 +18,6 @@ export const insertInvestment = async (
     `,
     [userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price]
   );
-
   return rows[0];
 };
 
@@ -45,10 +43,11 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
 };
 
 /**
- * FIX 2: Universal User Investment Fetch
- * CHAMDOR FIX: Uses CASE to strictly separate VIP products from Standard Items.
- * 8K FIX: Prioritizes 'i.amount' (actual paid price) over shop templates.
- * COUNTDOWN FIX: Live calculation using database end_date minus current time.
+ * FIX 2: Universal User Investment Fetch (THE CHAMDOR KILLER)
+ * LINE-BY-LINE CHANGES:
+ * 1. Removed it.price/cv.price from COALESCE to kill the 8k ghost.
+ * 2. Uses COALESCE on names to stop the Chamdor name takeover.
+ * 3. Uses direct duration from the investment row.
  */
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
@@ -57,35 +56,31 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.user_id,
       i.item_id,
       i.caspervip_id,
-      i.daily_earning,
-      i.total_earning,
       i.start_date,
       i.end_date,
       i.status,
       
-      -- UNIVERSAL MIRROR: PREVENTS 'CHAMDOR 1' OVERWRITING VIP NAMES
-      CASE 
-        WHEN i.caspervip_id IS NOT NULL THEN cv.name 
-        WHEN i.item_id IS NOT NULL THEN it.itemname 
-        ELSE 'Winery Plan' 
-      END AS "itemname",
+      -- NAME FIX: Force the joined name, no hardcoded defaults
+      COALESCE(cv.name, it.itemname, 'Winery Plan') AS "itemname",
       
-      -- UNIVERSAL MIRROR: PREVENTS '8000' OVERWRITING ACTUAL PAID AMOUNT
-      COALESCE(i.amount, i.price, it.price, cv.price, 0) AS "price",
+      -- PRICE FIX: Use ONLY the amount stored in the investment row. 
+      -- Deleted it.price and cv.price fallbacks which caused the 8k error.
+      COALESCE(i.amount, i.price, 0) AS "price",
       
-      -- SNAPSHOT YIELD: PREVENTS SHOP CHANGES FROM AFFECTING ACTIVE PLANS
-      COALESCE(i.daily_earning, it.dailyincome, cv.daily_earnings) AS "daily_earning",
+      -- YIELD FIX: Use the snapshot from the investment row first
+      COALESCE(i.daily_earning, cv.daily_earnings, it.dailyincome, 0) AS "daily_earning",
       
-      -- DYNAMIC IMAGE MAPPING
+      -- IMAGE FIX
       CASE 
         WHEN i.caspervip_id IS NOT NULL THEN cv.image 
         ELSE it.itemimage 
       END AS "itemimage",
       
-      -- DURATION SYNC
-      COALESCE(i.duration, it.duration, cv.duration_days) AS "duration",
+      -- DURATION FIX: Use the specific duration saved at time of purchase
+      COALESCE(i.duration, 35) AS "duration",
+      Number(i.total_earning) AS "total_earning",
       
-      -- LIVE DATABASE-LEVEL COUNTDOWN (ACCURATE TO THE SECOND)
+      -- LIVE COUNTDOWN: Database time subtraction
       GREATEST(0, EXTRACT(DAY FROM (i.end_date - CURRENT_TIMESTAMP))) AS "days_left"
 
     FROM investments i
@@ -100,21 +95,15 @@ export const getAllInvestmentsByUserId = async (userId) => {
 
 /**
  * FIX 3: Global Admin Stats
- * Accurately calculates platform liquidity based on actual transactions.
  */
 export const getTotalAmountInvested = async () => {
-  const query = `
-    SELECT SUM(COALESCE(amount, price, 0)) as total
-    FROM investments 
-    WHERE status = 'active'
-  `;
+  const query = `SELECT SUM(COALESCE(amount, price, 0)) as total FROM investments WHERE status = 'active'`;
   const { rows } = await pool.query(query);
   return parseFloat(rows[0].total) || 0;
 };
 
 /**
- * PETER'S VIEW: Community Stats
- * Ensures Admin sees exactly what the users are seeing for support transparency.
+ * PETER'S VIEW: Community Stats Sync
  */
 export const getAllInvestmentsWithDetails = async () => {
   const query = `
@@ -124,11 +113,7 @@ export const getAllInvestmentsWithDetails = async () => {
       i.start_date,
       i.status,
       u.full_name,
-      CASE 
-        WHEN i.caspervip_id IS NOT NULL THEN cv.name 
-        WHEN i.item_id IS NOT NULL THEN it.itemname 
-        ELSE 'Plan' 
-      END AS "plan_name",
+      COALESCE(cv.name, it.itemname, 'Plan') AS "plan_name",
       COALESCE(i.amount, i.price, 0) AS "investment_amount",
       GREATEST(0, EXTRACT(DAY FROM (i.end_date - CURRENT_TIMESTAMP))) AS "days_remaining"
     FROM investments i
@@ -153,11 +138,7 @@ export const getInvestmentEarningsHistory = async (userId) => {
       i.start_date AS "date",
       i.daily_earning,
       i.total_earning,
-      CASE 
-        WHEN i.caspervip_id IS NOT NULL THEN cv.name 
-        WHEN i.item_id IS NOT NULL THEN it.itemname 
-        ELSE 'Investment' 
-      END AS "source_name",
+      COALESCE(cv.name, it.itemname, 'Investment') AS "source_name",
       'investment_roi' AS "reward_type"
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
