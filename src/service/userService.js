@@ -46,9 +46,9 @@ const sendOtpEmail = async (to, otp) => {
  });
 };
 
-// --- NEW: FORGOT PASSWORD SERVICE ---
+// --- FORGOT PASSWORD SERVICE ---
 export const forgotPassword = async (email) => {
-    const user = await findUserByEmail(email);
+    const user = await findUserByEmail(email.toLowerCase().trim());
     if (!user) throw new Error("User with this email not found");
 
     const tempPassword = Math.random().toString(36).slice(-8); 
@@ -94,15 +94,16 @@ export const registerUser = async (data) => {
 
   const { fullName, phone, email, password, referralCode } = data;
 
-  const existingEmail = await findUserByEmail(email);
+  const cleanEmail = email.toLowerCase().trim();
+  const existingEmail = await findUserByEmail(cleanEmail);
   if (existingEmail) throw new Error('Email already registered');
   
-  const existingPhone = await findUserByPhone(phone);
+  const existingPhone = await findUserByPhone(phone.trim());
   if (existingPhone) throw new Error('Phone number already registered');
 
   let referrerId = null;
   if (referralCode && referralCode.trim() !== "") {
-    const referrer = await findUserByReferralCode(referralCode);
+    const referrer = await findUserByReferralCode(referralCode.trim());
     if (referrer) {
       referrerId = referrer.id;
       await client.query('UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE id = $1', [referrerId]);
@@ -115,7 +116,7 @@ export const registerUser = async (data) => {
   const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
   try {
-    await sendOtpEmail(email, otp);
+    await sendOtpEmail(cleanEmail, otp);
   } catch (emailErr) {
     console.error("Failed to send email, but proceeding with registration:", emailErr);
   }
@@ -125,14 +126,14 @@ export const registerUser = async (data) => {
     VALUES ($1, $2, $3, $4, 0, $5, $6, 0, $7, $8, FALSE)
     RETURNING *;
   `;
-  const { rows } = await client.query(queryText, [fullName, email, phone, passwordHash, referrerId, ownCode, otp, otpExpires]);
+  const { rows } = await client.query(queryText, [fullName, cleanEmail, phone.trim(), passwordHash, referrerId, ownCode, otp, otpExpires]);
   const newUser = rows[0];
 
   await client.query('COMMIT');
   
   return {
     message: "User registered successfully. Check your email for OTP.",
-    email,
+    email: cleanEmail,
     userId: newUser.id
   };
 
@@ -146,14 +147,14 @@ export const registerUser = async (data) => {
 
 // --- VERIFY OTP ---
 export const verifyUserOtp = async (email, otp) => {
- const user = await findUserByEmail(email);
+ const user = await findUserByEmail(email.toLowerCase().trim());
  if (!user) throw new Error("User not found");
 
  if (user.is_verified) return { success: true, message: "User already verified" };
  if (!user.otp_code || user.otp_code !== otp) throw new Error("Invalid OTP");
  if (new Date() > new Date(user.otp_expires_at)) throw new Error("OTP expired");
 
- await updateUserVerification(email, true);
+ await updateUserVerification(user.email, true);
 
  const welcomeBonus = 200.0;
  const newBalance = Number(user.balance) + welcomeBonus;
@@ -174,33 +175,56 @@ export const verifyUserOtp = async (email, otp) => {
  };
 };
 
-// --- UPDATED LOGIN USER (Identifier Handshake Fixed) ---
+// --- UPDATED LOGIN USER (IDENTIFIER HANDSHAKE FIXED) ---
 export const loginUser = async ({ email, phone, password }) => {
  let user;
  
- const emailValid = email && email.trim() !== "";
- const phoneValid = phone && phone.trim() !== "";
-
- if (emailValid) {
-     user = await findUserByEmail(email.trim());
+ // 1. Find User by Email or Phone with normalization
+ if (email && email.trim() !== "") {
+     user = await findUserByEmail(email.toLowerCase().trim());
  } 
  
- if (!user && phoneValid) {
+ if (!user && phone && phone.trim() !== "") {
      user = await findUserByPhone(phone.trim());
  }
 
- if (!user) throw new Error('Invalid credentials');
+ // 2. Validate user existence
+ if (!user) {
+     console.error(`[Login] User not found for: ${email || phone}`);
+     throw new Error('Invalid credentials');
+ }
 
+ // 3. Block check
  if (user.is_blocked || user.account_status === 'suspended' || user.account_status === 'blocked') {
      throw new Error(`Account ${user.account_status || 'blocked'}: ${user.block_reason || 'Contact Support'}`);
  }
 
+ // 4. Password Check
  const isMatch = await bcrypt.compare(password, user.password_hash);
- if (!isMatch) throw new Error('Invalid credentials');
+ if (!isMatch) {
+     console.error(`[Login] Password mismatch for: ${user.email}`);
+     throw new Error('Invalid credentials');
+ }
 
- const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+ // 5. Token Generation (Includes is_admin flag for frontend safety)
+ const userRole = user.is_admin ? 'admin' : (user.role || 'user');
+ const token = jwt.sign(
+     { id: user.id, email: user.email, role: userRole, is_admin: user.is_admin }, 
+     process.env.JWT_SECRET, 
+     { expiresIn: '7d' }
+ );
  
- return { token, user: { id: user.id, name: user.full_name, email: user.email, role: user.role } };
+ return { 
+     success: true,
+     token, 
+     user: { 
+         id: user.id, 
+         name: user.full_name, 
+         email: user.email, 
+         role: userRole, 
+         is_admin: user.is_admin 
+     } 
+ };
 };
 
 // --- GET BALANCE ---
@@ -373,7 +397,7 @@ export const getUserDashboardData = async (userId) => {
 // --- Edit Email ---
 export const editUserEmail = async (userId, newEmail) => {
  if (!newEmail.includes("@")) throw new Error("Invalid email");
- await pool.query('UPDATE users SET email = $1 WHERE id = $2', [newEmail, userId]);
+ await pool.query('UPDATE users SET email = $1 WHERE id = $2', [newEmail.toLowerCase().trim(), userId]);
  return { success: true };
 };
 
@@ -385,7 +409,7 @@ export const getUserProfile = async (userId) => {
 
 // --- ADMIN FUNDING FUNCTION ---
 export const adminFundUser = async (email, amount) => {
-   const user = await findUserByEmail(email);
+   const user = await findUserByEmail(email.toLowerCase().trim());
    if (!user) throw new Error("User email not found");
 
    const newBalance = Number(user.balance) + Number(amount);
@@ -467,7 +491,7 @@ export const adminUpdateUser = async (userId, updateData) => {
        RETURNING id, full_name, email, phone_number, balance;
    `;
    
-   const { rows } = await pool.query(query, [userId, full_name, email, phone_number, balance]);
+   const { rows } = await pool.query(query, [userId, full_name, email ? email.toLowerCase().trim() : null, phone_number, balance]);
    if (rows.length === 0) throw new Error("User not found");
    
    return { success: true, user: rows[0] };
