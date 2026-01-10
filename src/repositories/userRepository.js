@@ -5,18 +5,21 @@ export const insertUser = async ({ fullName, phone, email, password, referralCod
   const q = `INSERT INTO users (full_name, phone_number, email, password_hash, referral_code_used, referrer_id, own_referral_code, is_admin, otp_code, otp_expires_at)
               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *;`;
     
-  const vals = [fullName, phone, email || null, password, referralCode || null, referrerId || null, ownReferralCode || null, isAdmin, otpCode, otpExpiresAt];
+  const vals = [fullName, phone, email ? email.toLowerCase().trim() : null, password, referralCode || null, referrerId || null, ownReferralCode || null, isAdmin, otpCode, otpExpiresAt];
   const { rows } = await pool.query(q, vals);
   return rows[0];
 };
 
+// --- FIXED: Added TRIM and normalization for login reliability ---
 export const findUserByPhone = async (phone) => {
-  const { rows } = await pool.query('SELECT * FROM users WHERE phone_number = $1', [phone]);
+  const cleanPhone = phone ? phone.trim() : '';
+  const { rows } = await pool.query('SELECT * FROM users WHERE phone_number = $1', [cleanPhone]);
   return rows[0];
 };
 
 export const findUserByEmail = async (email) => {
-  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+  const cleanEmail = email ? email.toLowerCase().trim() : '';
+  const { rows } = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [cleanEmail]);
   return rows[0];
 };
 
@@ -45,7 +48,7 @@ export const createTransaction = async ({ userId, amount, type, status = 'succes
   return rows[0];
 };
 
-// --- FIXED: PIN MANAGEMENT (Changed transaction_pin to withdrawal_pin to match service/main.js) ---
+// --- PIN MANAGEMENT ---
 export const setUserPin = async (userId, hashedPin) => {
   const query = `UPDATE users SET withdrawal_pin = $1 WHERE id = $2 RETURNING id`;
   const { rows } = await pool.query(query, [hashedPin, userId]);
@@ -58,7 +61,7 @@ export const getUserPin = async (userId) => {
   return rows[0]?.withdrawal_pin;
 };
 
-// --- NEW: FETCH ACTIVE INVESTMENTS (For Days Left Timer) ---
+// --- FETCH ACTIVE INVESTMENTS ---
 export const getActiveInvestments = async (userId) => {
   const query = `
     SELECT i.*, p.itemname, p.duration, p.dailyincome 
@@ -107,7 +110,8 @@ export const findUserEmailByUserId = async (userId) => {
 };
 
 export const updateUserEmail = async (userId, newEmail) => {
-  const result = await pool.query("UPDATE users SET email = $1 WHERE id = $2", [newEmail, userId]);
+  const cleanEmail = newEmail ? newEmail.toLowerCase().trim() : '';
+  const result = await pool.query("UPDATE users SET email = $1 WHERE id = $2", [cleanEmail, userId]);
   return result.rowCount === 1;
 };
 
@@ -125,7 +129,8 @@ export const incrementReferralCount = async (userId) => {
 };
 
 export const updateUserVerification = async (email, verified) => {
-  await pool.query(`UPDATE users SET is_verified = $1, otp_code = NULL, otp_expires_at = NULL WHERE email = $2`, [verified, email]);
+  const cleanEmail = email ? email.toLowerCase().trim() : '';
+  await pool.query(`UPDATE users SET is_verified = $1, otp_code = NULL, otp_expires_at = NULL WHERE LOWER(email) = LOWER($2)`, [verified, cleanEmail]);
 };
 
 // 4. Admin/Metrics
