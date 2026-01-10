@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-// FIX: Changed '../config' to './config' because both files are in the 'src' folder
+// FIX: Using the correct relative path for the database config
 import pool from './config/database.js'; 
 
 console.log('[Scheduler] Investment Expiration Engine Started...');
@@ -10,13 +10,13 @@ cron.schedule('0 0 * * *', async () => {
   const client = await pool.connect();
 
   try {
-    // 1. Find investments where (Creation Date + Duration) is in the PAST
-    // AND the status is still 'active'.
+    // UPDATED: Changed created_at to start_date 
+    // This query finds active investments that have passed their duration and marks them 'completed'
     const expireQuery = `
       UPDATE investments 
       SET status = 'completed' 
       WHERE status = 'active' 
-      AND (created_at + (duration || ' days')::interval) < NOW()
+      AND (start_date + (duration || ' days')::interval) < NOW()
       RETURNING id, user_id;
     `;
 
@@ -24,6 +24,7 @@ cron.schedule('0 0 * * *', async () => {
     
     if (rows.length > 0) {
       console.log(`[Cron] SUCCESS: Expired ${rows.length} investments.`);
+      // Optional: You could add a notification trigger here later
     } else {
       console.log('[Cron] No investments expired today.');
     }
