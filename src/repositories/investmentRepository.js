@@ -2,8 +2,6 @@ import pool from '../config/database.js';
 
 /**
  * FIX 1: Universal Insert
- * Ensures the duration and price are SNAPSHOTTED into the investment row.
- * This prevents the "Chamdor Default" if shop items are changed later.
  */
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
@@ -43,11 +41,8 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
 };
 
 /**
- * FIX 2: Universal User Investment Fetch (THE CHAMDOR KILLER)
- * LINE-BY-LINE CHANGES:
- * 1. Removed it.price/cv.price from COALESCE to kill the 8k ghost.
- * 2. Uses COALESCE on names to stop the Chamdor name takeover.
- * 3. Uses direct duration from the investment row.
+ * FIX 2: Universal User Investment Fetch
+ * FIXED: Removed the invalid "Number()" SQL function that caused the crash.
  */
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
@@ -60,27 +55,26 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.end_date,
       i.status,
       
-      -- NAME FIX: Force the joined name, no hardcoded defaults
+      -- Force Name Mirror
       COALESCE(cv.name, it.itemname, 'Winery Plan') AS "itemname",
       
-      -- PRICE FIX: Use ONLY the amount stored in the investment row. 
-      -- Deleted it.price and cv.price fallbacks which caused the 8k error.
+      -- Force Price Mirror (Amount paid)
       COALESCE(i.amount, i.price, 0) AS "price",
       
-      -- YIELD FIX: Use the snapshot from the investment row first
+      -- Snapshot Yield
       COALESCE(i.daily_earning, cv.daily_earnings, it.dailyincome, 0) AS "daily_earning",
       
-      -- IMAGE FIX
+      -- Image Mapping
       CASE 
         WHEN i.caspervip_id IS NOT NULL THEN cv.image 
         ELSE it.itemimage 
       END AS "itemimage",
       
-      -- DURATION FIX: Use the specific duration saved at time of purchase
+      -- Duration & Accumulated
       COALESCE(i.duration, 35) AS "duration",
-      Number(i.total_earning) AS "total_earning",
+      i.total_earning AS "total_earning",
       
-      -- LIVE COUNTDOWN: Database time subtraction
+      -- Database Countdown
       GREATEST(0, EXTRACT(DAY FROM (i.end_date - CURRENT_TIMESTAMP))) AS "days_left"
 
     FROM investments i
