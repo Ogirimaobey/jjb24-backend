@@ -44,7 +44,8 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
 
 /**
  * FIX 2: Universal User Investment Fetch
- * CRASH FIX: Changed cv.duration to cv.duration_days
+ * PRIORITY FIX: Pulls data from the investment record FIRST to avoid the "8k" shop template error.
+ * COUNTDOWN FIX: Calculates real-time days left from the database end_date.
  */
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
@@ -58,13 +59,16 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.start_date,
       i.end_date,
       i.status,
+      -- PRIORITY: Look for name in items or VIP table, default to 'Winery Plan'
       COALESCE(it.itemname, cv.name, 'Winery Plan') AS "itemname",
-      COALESCE(i.price, i.amount, it.price, cv.price, 0) AS "price",
-      COALESCE(it.dailyincome, cv.daily_earnings, i.daily_earning) AS "daily_earning",
+      -- PRICE FIX: Prioritize 'amount' column in investments table (where 500k is stored)
+      COALESCE(i.amount, i.price, it.price, cv.price, 0) AS "price",
+      -- EARNINGS FIX: Prioritize what was locked in at time of purchase
+      COALESCE(i.daily_earning, it.dailyincome, cv.daily_earnings) AS "daily_earning",
       COALESCE(it.itemimage, cv.image, 'https://res.cloudinary.com/dja8976/image/upload/v1/default-plan.png') AS "itemimage",
-      -- FIXED: Changed cv.duration to cv.duration_days to match vipRepository
       COALESCE(i.duration, it.duration, cv.duration_days) AS "duration",
-      COALESCE(i.days_left, EXTRACT(DAY FROM (i.end_date - CURRENT_DATE))) AS "days_left"
+      -- COUNTDOWN FIX: Live calculation of days left (35 -> 34 -> 33)
+      GREATEST(0, EXTRACT(DAY FROM (i.end_date - CURRENT_TIMESTAMP))) AS "days_left"
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
     LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
@@ -97,7 +101,7 @@ export const getAllInvestmentsWithDetails = async () => {
       i.status,
       u.full_name,
       COALESCE(it.itemname, cv.name, 'Plan') AS "plan_name",
-      COALESCE(i.price, i.amount, 0) AS "investment_amount"
+      COALESCE(i.amount, i.price, 0) AS "investment_amount"
     FROM investments i
     INNER JOIN users u ON i.user_id = u.id
     LEFT JOIN items it ON i.item_id = it.id
@@ -109,7 +113,7 @@ export const getAllInvestmentsWithDetails = async () => {
 };
 
 export const getTotalInvestmentsCount = async () => {
-  const { rows } = await pool.query('SELECT COUNT(*) as count FROM investments WHERE status = \'active\'');
+  const { rows } = await pool.query("SELECT COUNT(*) as count FROM investments WHERE status = 'active'");
   return parseInt(rows[0].count);
 };
 
