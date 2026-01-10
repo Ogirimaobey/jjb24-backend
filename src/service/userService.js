@@ -239,11 +239,11 @@ export const getUserBalance = async (userId) => {
  }
 
  return { 
-  balance: Number(user.balance), 
-  full_name: user.full_name,
-  own_referral_code: user.own_referral_code,
-  phone_number: user.phone_number,
-  has_pin: user.withdrawal_pin ? true : false
+ balance: Number(user.balance), 
+ full_name: user.full_name,
+ own_referral_code: user.own_referral_code,
+ phone_number: user.phone_number,
+ has_pin: user.withdrawal_pin ? true : false
  };
 };
 
@@ -365,44 +365,48 @@ export const getUserReferralData = async (userId) => {
  }
 };
 
-// --- GET DASHBOARD DATA (UNIVERSAL MIRROR HANDSHAKE) ---
+// --- GET DASHBOARD DATA (THE CHAMDOR KILLER - FINAL SYNC) ---
 export const getUserDashboardData = async (userId) => {
  try {
+    // 1. Fetch from Repository (which uses the LEFT JOIN we fixed)
     const investments = await getAllInvestmentsByUserId(userId);
     
-    // REDUNDANT SYNC: We send multiple key names to ensure main.js handshake is perfect
-    // This solves the 'Chamdor 1' name error and the '8k' price error permanently.
     const activeInvestments = investments.map(inv => {
-        const cleanName = inv.itemname || inv.itemName || 'Winery Plan';
-        const cleanPrice = Number(inv.price || inv.amount) || 0;
-        const cleanDays = (inv.days_left !== undefined) ? Number(inv.days_left) : 0;
+        // LINE-BY-LINE FIX:
+        // We FORCE the use of the joined name from the database.
+        // We use Number(inv.price) which now points ONLY to i.amount in the fixed Repository.
+        const displayName = inv.itemname || 'Winery Plan';
+        const actualPaid = Number(inv.price) || 0;
+        const daysRemaining = Number(inv.days_left) || 0;
+        const dailyIncome = Number(inv.daily_earning) || 0;
 
         return {
             id: inv.id,
-            // Mirror logic: support both casing for frontend safety
-            itemname: cleanName,
-            itemName: cleanName,
+            // Mirror Keys for main.js Handshake
+            itemname: displayName,
+            itemName: displayName,
             
-            price: cleanPrice,
-            amount: cleanPrice,
-            investmentAmount: cleanPrice,
+            price: actualPaid,
+            amount: actualPaid,
+            investmentAmount: actualPaid,
             
-            daily_earning: Number(inv.daily_earning) || 0,
-            dailyYield: Number(inv.daily_earning) || 0,
+            daily_earning: dailyIncome,
+            dailyYield: dailyIncome,
             
             total_earning: Number(inv.total_earning) || 0,
             totalAccumulated: Number(inv.total_earning) || 0,
             
-            days_left: cleanDays,
-            daysLeft: cleanDays,
+            days_left: daysRemaining,
+            daysLeft: daysRemaining,
             
-            status: inv.status || 'active'
+            status: inv.status || 'active',
+            start_date: inv.start_date
         };
     });
 
     return { active_investments: activeInvestments };
  } catch (err) {
-    console.error("[Dashboard Fetch Error]", err);
+    console.error("[Dashboard Final Sync Error]", err);
     throw err;
  }
 };
@@ -472,42 +476,42 @@ export const getAllUsers = async () => {
 
 // --- BLOCK / SUSPEND USER ---
 export const updateUserStatus = async (userId, status, reason) => {
-   let isBlocked = false;
-   if (status === 'suspended' || status === 'blocked') {
-       isBlocked = true;
-   }
+    let isBlocked = false;
+    if (status === 'suspended' || status === 'blocked') {
+        isBlocked = true;
+    }
 
-   const query = `
-       UPDATE users 
-       SET account_status = $2, is_blocked = $3, block_reason = $4
-       WHERE id = $1
-       RETURNING id, full_name, account_status, is_blocked;
-   `;
-   
-   const { rows } = await pool.query(query, [userId, status, isBlocked, reason]);
-   if (rows.length === 0) throw new Error("User not found");
-   
-   return { success: true, user: rows[0] };
+    const query = `
+        UPDATE users 
+        SET account_status = $2, is_blocked = $3, block_reason = $4
+        WHERE id = $1
+        RETURNING id, full_name, account_status, is_blocked;
+    `;
+    
+    const { rows } = await pool.query(query, [userId, status, isBlocked, reason]);
+    if (rows.length === 0) throw new Error("User not found");
+    
+    return { success: true, user: rows[0] };
 };
 
 // --- ADMIN EDIT USER ---
 export const adminUpdateUser = async (userId, updateData) => {
-   const { full_name, email, phone_number, balance } = updateData;
-   
-   const query = `
-       UPDATE users 
-       SET 
-           full_name = COALESCE($2, full_name),
-           email = COALESCE($3, email),
-           phone_number = COALESCE($4, phone_number),
-           balance = COALESCE($5, balance)
-       WHERE id = $1
-       RETURNING id, full_name, email, phone_number, balance;
-   `;
-   
-   const cleanEmail = email ? email.toLowerCase().trim() : null;
-   const { rows } = await pool.query(query, [userId, full_name, cleanEmail, phone_number, balance]);
-   if (rows.length === 0) throw new Error("User not found");
-   
-   return { success: true, user: rows[0] };
+    const { full_name, email, phone_number, balance } = updateData;
+    
+    const query = `
+        UPDATE users 
+        SET 
+            full_name = COALESCE($2, full_name),
+            email = COALESCE($3, email),
+            phone_number = COALESCE($4, phone_number),
+            balance = COALESCE($5, balance)
+        WHERE id = $1
+        RETURNING id, full_name, email, phone_number, balance;
+    `;
+    
+    const cleanEmail = email ? email.toLowerCase().trim() : null;
+    const { rows } = await pool.query(query, [userId, full_name, cleanEmail, phone_number, balance]);
+    if (rows.length === 0) throw new Error("User not found");
+    
+    return { success: true, user: rows[0] };
 };
