@@ -47,6 +47,7 @@ const createDailyTaskTable = `
   );
 `;
 
+// UPDATED: Changed created_at to start_date and added status
 const createInvestmentTable = `
   CREATE TABLE IF NOT EXISTS investments (
     id SERIAL PRIMARY KEY,
@@ -54,7 +55,8 @@ const createInvestmentTable = `
     item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
     daily_earning NUMERIC(15, 2) DEFAULT 0,
     total_earning NUMERIC(15, 2) DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'active'
   );
 `;
 
@@ -69,17 +71,21 @@ const alterTableInvestments = `
   REFERENCES casper_vip(id)
   ON DELETE CASCADE;
 
-  ALTER TABLE investments
-  DROP CONSTRAINT IF EXISTS investments_only_one_product_check, 
-  ADD CONSTRAINT investments_only_one_product_check
-  CHECK (
-    (item_id IS NOT NULL AND caspervip_id IS NULL)
-    OR
-    (item_id IS NULL AND caspervip_id IS NOT NULL)
-  );
+  -- UPDATED: Status and start_date column maintenance
+  ALTER TABLE investments ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+  
+  -- Logic to ensure start_date exists if it was previously created_at
+  DO $$ 
+  BEGIN 
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='investments' AND column_name='created_at') THEN
+      ALTER TABLE investments RENAME COLUMN created_at TO start_date;
+    END IF;
+  END $$;
+
+  -- REMOVED: The check constraint that was causing the crash
+  ALTER TABLE investments DROP CONSTRAINT IF EXISTS investments_only_one_product_check;
 `;
 
-// UPDATED: Added withdrawal_pin column
 const alterTableUsers = `
   ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email VARCHAR(100) UNIQUE,
@@ -89,25 +95,22 @@ const alterTableUsers = `
   ADD COLUMN IF NOT EXISTS referral_code_used VARCHAR(50), 
   ADD COLUMN IF NOT EXISTS own_referral_code VARCHAR(50) UNIQUE,
   ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false,
-  ADD COLUMN IF NOT EXISTS otp_code VARCHAR(10),  
+  ADD COLUMN IF NOT EXISTS otp_code VARCHAR(10),   
   ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP,
   ADD COLUMN IF NOT EXISTS referrer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS account_status VARCHAR(20) DEFAULT 'active',
   ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS block_reason TEXT,
-  -- NEW: Support for Transaction PIN Security
   ADD COLUMN IF NOT EXISTS withdrawal_pin TEXT,
   DROP COLUMN IF EXISTS type;
 `;
 
-// UPDATED: Added receipt_url for manual deposits
 const alterTableTransactions = `
   ALTER TABLE transactions
     ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'deposit',
     ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100),
     ADD COLUMN IF NOT EXISTS account_number VARCHAR(20),
     ADD COLUMN IF NOT EXISTS account_name VARCHAR(100),
-    -- NEW: Column for Manual Receipt Screenshots
     ADD COLUMN IF NOT EXISTS receipt_url TEXT;
   
   ALTER TABLE transactions
