@@ -48,7 +48,8 @@ const sendOtpEmail = async (to, otp) => {
 
 // --- FORGOT PASSWORD SERVICE ---
 export const forgotPassword = async (email) => {
-    const user = await findUserByEmail(email.toLowerCase().trim());
+    const cleanEmail = email.toLowerCase().trim();
+    const user = await findUserByEmail(cleanEmail);
     if (!user) throw new Error("User with this email not found");
 
     const tempPassword = Math.random().toString(36).slice(-8); 
@@ -68,7 +69,7 @@ export const forgotPassword = async (email) => {
 
     await transporter.sendMail({
         from: `"JJB24 Security" <${process.env.MAIL_USER}>`,
-        to: email,
+        to: cleanEmail,
         subject: "Temporary Password - JJB24",
         html: `
             <div style="font-family: sans-serif; padding: 20px; color: #333;">
@@ -98,8 +99,9 @@ export const registerUser = async (data) => {
   const existingEmail = await findUserByEmail(cleanEmail);
   if (existingEmail) throw new Error('Email already registered');
   
-  const existingPhone = await findUserByPhone(phone.trim());
-  if (existingPhone) throw new Error('Phone number already registered');
+  const existingPhone = phone.trim();
+  const existingPhoneRecord = await findUserByPhone(existingPhone);
+  if (existingPhoneRecord) throw new Error('Phone number already registered');
 
   let referrerId = null;
   if (referralCode && referralCode.trim() !== "") {
@@ -126,7 +128,7 @@ export const registerUser = async (data) => {
     VALUES ($1, $2, $3, $4, 0, $5, $6, 0, $7, $8, FALSE)
     RETURNING *;
   `;
-  const { rows } = await client.query(queryText, [fullName, cleanEmail, phone.trim(), passwordHash, referrerId, ownCode, otp, otpExpires]);
+  const { rows } = await client.query(queryText, [fullName, cleanEmail, existingPhone, passwordHash, referrerId, ownCode, otp, otpExpires]);
   const newUser = rows[0];
 
   await client.query('COMMIT');
@@ -147,7 +149,8 @@ export const registerUser = async (data) => {
 
 // --- VERIFY OTP ---
 export const verifyUserOtp = async (email, otp) => {
- const user = await findUserByEmail(email.toLowerCase().trim());
+ const cleanEmail = email.toLowerCase().trim();
+ const user = await findUserByEmail(cleanEmail);
  if (!user) throw new Error("User not found");
 
  if (user.is_verified) return { success: true, message: "User already verified" };
@@ -179,37 +182,40 @@ export const verifyUserOtp = async (email, otp) => {
 export const loginUser = async ({ email, phone, password }) => {
  let user;
  
- // 1. Find User by Email or Phone with normalization
+ // 1. Find User with strict normalization
  if (email && email.trim() !== "") {
-     user = await findUserByEmail(email.toLowerCase().trim());
+     const cleanEmail = email.toLowerCase().trim();
+     console.log(`[Login] Searching for email: ${cleanEmail}`);
+     user = await findUserByEmail(cleanEmail);
  } 
  
  if (!user && phone && phone.trim() !== "") {
-     user = await findUserByPhone(phone.trim());
+     const cleanPhone = phone.trim();
+     console.log(`[Login] Searching for phone: ${cleanPhone}`);
+     user = await findUserByPhone(cleanPhone);
  }
 
- // 2. Validate user existence
+ // 2. Validate existence
  if (!user) {
-     console.error(`[Login] User not found for: ${email || phone}`);
+     console.error(`[Login Failed] User not found for input: ${email || phone}`);
      throw new Error('Invalid credentials');
  }
 
- // 3. Block check
+ // 3. Status check
  if (user.is_blocked || user.account_status === 'suspended' || user.account_status === 'blocked') {
      throw new Error(`Account ${user.account_status || 'blocked'}: ${user.block_reason || 'Contact Support'}`);
  }
 
- // 4. Password Check
+ // 4. Password comparison using bcryptjs
  const isMatch = await bcrypt.compare(password, user.password_hash);
- if (!isMatch) {
-     console.error(`[Login] Password mismatch for: ${user.email}`);
-     throw new Error('Invalid credentials');
- }
+ console.log(`[Login] ${user.email} - Password Match: ${isMatch}`);
 
- // 5. Token Generation (Includes is_admin flag for frontend safety)
+ if (!isMatch) throw new Error('Invalid credentials');
+
+ // 5. Token Generation (Explicitly mapping is_admin for frontend)
  const userRole = user.is_admin ? 'admin' : (user.role || 'user');
  const token = jwt.sign(
-     { id: user.id, email: user.email, role: userRole, is_admin: user.is_admin }, 
+     { id: user.id, email: user.email, role: userRole, is_admin: !!user.is_admin }, 
      process.env.JWT_SECRET, 
      { expiresIn: '7d' }
  );
@@ -222,10 +228,12 @@ export const loginUser = async ({ email, phone, password }) => {
          name: user.full_name, 
          email: user.email, 
          role: userRole, 
-         is_admin: user.is_admin 
+         is_admin: !!user.is_admin 
      } 
  };
 };
+
+// --- REST OF THE FUNCTIONS REMAIN THE SAME ---
 
 // --- GET BALANCE ---
 export const getUserBalance = async (userId) => {
@@ -409,7 +417,8 @@ export const getUserProfile = async (userId) => {
 
 // --- ADMIN FUNDING FUNCTION ---
 export const adminFundUser = async (email, amount) => {
-   const user = await findUserByEmail(email.toLowerCase().trim());
+   const cleanEmail = email.toLowerCase().trim();
+   const user = await findUserByEmail(cleanEmail);
    if (!user) throw new Error("User email not found");
 
    const newBalance = Number(user.balance) + Number(amount);
@@ -491,7 +500,8 @@ export const adminUpdateUser = async (userId, updateData) => {
        RETURNING id, full_name, email, phone_number, balance;
    `;
    
-   const { rows } = await pool.query(query, [userId, full_name, email ? email.toLowerCase().trim() : null, phone_number, balance]);
+   const cleanEmail = email ? email.toLowerCase().trim() : null;
+   const { rows } = await pool.query(query, [userId, full_name, cleanEmail, phone_number, balance]);
    if (rows.length === 0) throw new Error("User not found");
    
    return { success: true, user: rows[0] };
