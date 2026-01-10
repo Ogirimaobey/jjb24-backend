@@ -11,14 +11,12 @@ import {
   setWithdrawalPin,
   getUserDashboardData,
   adminFundUser,
-  // --- ADDED FOR SECURITY MANAGEMENT ---
-  changeUserPassword,    // <--- NEW
-  resetWithdrawalPin,    // <--- NEW
-  // --- ADMIN IMPORTS ---
+  changeUserPassword,
+  resetWithdrawalPin,
   getAllUsers,
   updateUserStatus,
   adminUpdateUser,
-  forgotPassword // <--- NEW IMPORT ADDED HERE
+  forgotPassword 
 } from '../service/userService.js';
 import { verifyToken, verifyAdmin } from "../middleware/authMiddleware.js";
 import { getAllItems, getItemById } from '../service/itemService.js';
@@ -40,10 +38,9 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// User login
+// User login (Standard User & Peter Admin)
 router.post('/login', async (req, res) => {
   try {
-    // Ensure we handle both email and phone checks based on what frontend sends
     const { email, phone, password } = req.body;
     const { token, user } = await loginUser({ email, phone, password });
 
@@ -59,7 +56,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// NEW: Forgot Password Route
+// Forgot Password Request
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -91,7 +88,7 @@ router.get("/balance", verifyToken, async (req, res) => {
   }
 });
 
-// Get User Profile
+// Get User Profile details
 router.get('/user_profile', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -110,7 +107,6 @@ router.put('/edit-email', verifyToken, async (req, res) => {
     const result = await editUserEmail(userId, newEmail);
     res.status(200).json(result);
   } catch (error) {
-    console.log("error message", error.message);
     res.status(400).json({ success: false, message: error.message });
   }
 });
@@ -119,7 +115,7 @@ router.put('/edit-email', verifyToken, async (req, res) => {
 // --- SECURITY & PIN MANAGEMENT ---
 // ==========================================
 
-// --- NEW: SET WITHDRAWAL PIN ---
+// Create a new 4-digit security PIN
 router.post('/set-pin', verifyToken, async (req, res) => {
   try {
     const { pin } = req.body;
@@ -130,7 +126,7 @@ router.post('/set-pin', verifyToken, async (req, res) => {
   }
 });
 
-// --- ADDED: RESET WITHDRAWAL PIN ---
+// Update an existing security PIN
 router.post('/reset-pin', verifyToken, async (req, res) => {
   try {
     const { newPin } = req.body;
@@ -141,7 +137,7 @@ router.post('/reset-pin', verifyToken, async (req, res) => {
   }
 });
 
-// --- ADDED: CHANGE LOGIN PASSWORD ---
+// Update account login password
 router.post('/change-password', verifyToken, async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
@@ -156,7 +152,7 @@ router.post('/change-password', verifyToken, async (req, res) => {
 // --- INVESTMENTS & DASHBOARD ---
 // ==========================================
 
-// --- NEW: GET DASHBOARD DATA ---
+// Get Dashboard Data (Universal Mirror: IDs, Price, Days Left)
 router.get('/dashboard', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -167,7 +163,7 @@ router.get('/dashboard', verifyToken, async (req, res) => {
   }
 });
 
-// Verify User OTP
+// Verify registration OTP
 router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -178,7 +174,7 @@ router.post("/verify-otp", async (req, res) => {
   }
 });
 
-// Get all items (users can view)
+// View all available shop plans
 router.get('/allItems', verifyToken, async (req, res) => {
   try {
     const result = await getAllItems();
@@ -188,7 +184,7 @@ router.get('/allItems', verifyToken, async (req, res) => {
   }
 });
 
-// Get single item by ID
+// View single shop plan details
 router.get('/item/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -199,11 +195,11 @@ router.get('/item/:id', verifyToken, async (req, res) => {
   }
 });
 
-// Cookies -Authentication
+// Basic Auth Check
 router.get('/check-auth', verifyToken, (req, res) => {
   res.json({
     success: true,
-    user: { username: req.user.userId }
+    user: { id: req.user.id }
   });
 });
 
@@ -211,7 +207,7 @@ router.get('/check-auth', verifyToken, (req, res) => {
 // --- TEAM & EARNINGS ---
 // ==========================================
 
-// Get user earnings summary
+// Get calculation of total yields and earnings
 router.get('/earnings-summary', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -222,40 +218,35 @@ router.get('/earnings-summary', verifyToken, async (req, res) => {
   }
 });
 
-// Get user referral/team data
+// View 3-level team members
 router.get('/referrals', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    console.log(`[GET /api/users/referrals] User ID: ${userId}`);
     const referralData = await getUserReferralData(userId);
     res.status(200).json({ success: true, ...referralData });
   } catch (error) {
-    console.error('[GET /api/users/referrals] Error fetching referral data:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Alternative endpoint name for team
+// Alternative endpoint for team viewing
 router.get('/team', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const referralData = await getUserReferralData(userId);
     res.status(200).json({ success: true, ...referralData });
   } catch (error) {
-    console.error('Error fetching team data:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Get unified reward history
+// Unified list of all bonuses and yields
 router.get('/reward-history', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    console.log(`[GET /api/users/reward-history] User ID: ${userId}`);
     const rewardHistory = await getRewardHistory(userId);
     res.status(200).json({ success: true, ...rewardHistory });
   } catch (error) {
-    console.error('[GET /api/users/reward-history] Error fetching reward history:', error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
@@ -264,7 +255,7 @@ router.get('/reward-history', verifyToken, async (req, res) => {
 // --- ADMIN MANAGEMENT ROUTES ---
 // ==========================================
 
-// 1. Admin Fund Wallet
+// Admin: Manually fund a specific user's wallet
 router.post('/admin/fund', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { email, amount } = req.body;
@@ -278,7 +269,7 @@ router.post('/admin/fund', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// 2. Get All Users
+// Admin: View all registered users in the platform
 router.get('/admin/users', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const users = await getAllUsers();
@@ -288,7 +279,7 @@ router.get('/admin/users', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// 3. Suspend/Block User
+// Admin: Suspend or Block a specific user account
 router.patch('/admin/users/:id/status', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -300,7 +291,7 @@ router.patch('/admin/users/:id/status', verifyToken, verifyAdmin, async (req, re
   }
 });
 
-// 4. Edit User Details
+// Admin: Update sensitive user data fields
 router.put('/admin/users/:id', verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { id } = req.params;
