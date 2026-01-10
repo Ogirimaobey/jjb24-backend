@@ -364,7 +364,7 @@ export const getUserDashboardData = async (userId) => {
  const investments = await getAllInvestmentsByUserId(userId);
  
  const activeInvestments = investments.map(inv => {
-    // Redundant naming to ensure frontend never sees 'undefined' or 'null'
+    // REDUNDANT NAMING: itemname (lowercase) and itemName (CamelCase)
     const name = inv.itemname || inv.itemName || 'Winery Plan';
     const amount = Number(inv.price || inv.amount) || 0;
     const remainingDays = (inv.days_left !== undefined && inv.days_left !== null) ? Number(inv.days_left) : 0;
@@ -375,8 +375,11 @@ export const getUserDashboardData = async (userId) => {
         itemName: name,
         price: amount,
         amount: amount,
-        daily_earning: inv.daily_earning,
-        total_earning: inv.total_earning,
+        investmentAmount: amount,
+        daily_earning: Number(inv.daily_earning) || 0,
+        dailyYield: Number(inv.daily_earning) || 0,
+        total_earning: Number(inv.total_earning) || 0,
+        totalAccumulated: Number(inv.total_earning) || 0,
         days_left: remainingDays,
         daysLeft: remainingDays,
         status: inv.status || 'active'
