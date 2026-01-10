@@ -29,7 +29,7 @@ export const createInvestment = async (userId, itemId) => {
     const newUserBalance = Number(user.balance) - itemPrice;
     await updateUserBalance(user.id, newUserBalance, client);
 
-    // UNIVERSAL MIRROR: Save standard item ID and clear VIP ID
+    // UNIVERSAL MIRROR: Save standard item ID and duration
     const investment = await insertInvestment(
       {
         userId,
@@ -84,8 +84,7 @@ export const createVipInvestment = async (userId, vipId) => {
     const newUserBalance = Number(user.balance) - vipPrice;
     await updateUserBalance(user.id, newUserBalance, client);
 
-    // UNIVERSAL MIRROR: Save VIP ID and explicitly set item_id to NULL
-    // This stops VIPs from showing up as 'Chamdor 1'
+    // UNIVERSAL MIRROR: Save VIP ID and set item_id to NULL
     const investment = await insertInvestment(
       {
         userId,
@@ -93,7 +92,7 @@ export const createVipInvestment = async (userId, vipId) => {
         casperVipId: vip.id,        
         dailyEarning: Number(vip.daily_earnings),
         totalEarning: 0,
-        duration: vip.duration_days || 30, // VIPs usually 30 days
+        duration: vip.duration_days || 30,
         price: vipPrice, 
         status: 'active'
       },
@@ -119,26 +118,51 @@ export const createVipInvestment = async (userId, vipId) => {
 };
 
 // ==========================================
-// 3. YIELD PROCESSING LOGIC
+// 3. YIELD PROCESSING LOGIC (DAILY EARNINGS)
 // ==========================================
+/**
+ * DURATION SAFEGUARD: This loop now checks if the plan has expired
+ * before paying out. It automatically stops earnings at 0 days.
+ */
 export const processDailyEarnings = async () => {
+  console.log(`[Yield Engine] Starting Daily Credit Run: ${new Date().toISOString()}`);
+  
   const investments = await getAllInvestments(); 
 
   for (const investment of investments) {
-    const { id, user_id, daily_earning, total_earning, status } = investment;
-    if (status && status !== 'active') continue;
+    const { id, user_id, daily_earning, total_earning, status, end_date } = investment;
+    
+    // Safety check: Skip if already inactive
+    if (status !== 'active') continue;
+
+    // EXPIRATION CHECK: If current time is past the end_date, kill the plan
+    if (new Date() > new Date(end_date)) {
+        console.log(`[Yield Engine] Plan ${id} has expired. Marking as completed.`);
+        await pool.query("UPDATE investments SET status = 'completed' WHERE id = $1", [id]);
+        continue;
+    }
 
     const user = await findUserById(user_id);
     if (!user) continue;
 
     const dailyYield = Number(daily_earning);
     const newBalance = Number(user.balance) + dailyYield;
-    await updateUserBalance(user.id, newBalance);
+    
+    try {
+        // 1. Credit User Wallet
+        await updateUserBalance(user.id, newBalance);
 
-    const newTotalEarning = Number(total_earning) + dailyYield;
-    await updateInvestmentEarnings(id, newTotalEarning);
+        // 2. Update Investment Accumulated Earnings
+        const newTotalEarning = Number(total_earning) + dailyYield;
+        await updateInvestmentEarnings(id, newTotalEarning);
 
-    await createInvestmentRoiTransaction(user_id, dailyYield, id);
+        // 3. Create Transaction Log for "My Rewards"
+        await createInvestmentRoiTransaction(user_id, dailyYield, id);
+        
+        console.log(`[Yield Engine] Paid ₦${dailyYield} to User ${user_id} for Plan ${id}`);
+    } catch (error) {
+        console.error(`[Yield Engine] Failed to process Plan ${id}: ${error.message}`);
+    }
   }
 };
 
@@ -156,8 +180,8 @@ export const getUserInvestments = async (userId) => {
 
   const formattedInvestments = investments.map(investment => {
     const priceValue = Number(investment.price) || 0;
-    const dailyValue = Number(investment.daily_earning || investment.dailyincome) || 0;
-    const daysRemaining = (investment.days_left !== undefined && investment.days_left !== null) ? Number(investment.days_left) : 0;
+    const dailyValue = Number(investment.daily_earning || 0);
+    const daysRemaining = Number(investment.days_left) || 0;
     
     totalInvestmentAmount += priceValue;
     if (investment.status === 'active') {
@@ -166,7 +190,7 @@ export const getUserInvestments = async (userId) => {
 
     return {
       id: investment.id,
-      // REDUNDANT SYNC: These keys match the frontend's search priority
+      // REDUNDANT SYNC: These keys match the frontend's search priority in main.js
       itemname: investment.itemname || 'Winery Plan',
       itemName: investment.itemname || 'Winery Plan', 
       
@@ -233,36 +257,14 @@ export const getRewardHistory = async (userId) => {
     `;
     const roiResult = await pool.query(roiQuery, [userId]);
     
-    const investmentIds = roiResult.rows.map(row => {
-      const match = row.reference.match(/ROI-(\d+)-/);
-      return match ? parseInt(match[1]) : null;
-    }).filter(id => id !== null);
-    
-    let sourceMap = {};
-    if (investmentIds.length > 0) {
-      const sourceQuery = `
-        SELECT i.id, COALESCE(cv.name, it.itemname) as source_name
-        FROM investments i
-        LEFT JOIN items it ON i.item_id = it.id
-        LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
-        WHERE i.id = ANY($1::int[])
-      `;
-      const sourceResult = await pool.query(sourceQuery, [investmentIds]);
-      sourceResult.rows.forEach(row => {
-        sourceMap[row.id] = row.source_name || 'Investment';
-      });
-    }
-    
     const investmentRewards = roiResult.rows.map(row => {
-      const investmentId = row.reference.match(/ROI-(\d+)-/)?.[1];
-      const sourceName = investmentId ? sourceMap[parseInt(investmentId)] : 'Investment';
       return {
         id: `roi_${row.id}`,
         date: row.date,
         amount: parseFloat(row.amount || 0),
-        source: sourceName,
+        source: 'Winery Yield',
         type: 'investment_roi',
-        description: `Daily ROI from ${sourceName}`
+        description: `Daily ROI Credited`
       };
     });
 
@@ -290,8 +292,6 @@ export const getRewardHistory = async (userId) => {
     return {
       rewards: allRewards,
       summary: {
-        total_investment_roi: Math.round(investmentRewards.reduce((s, r) => s + r.amount, 0) * 100) / 100,
-        total_referral_bonus: Math.round(referralRewards.reduce((s, r) => s + r.amount, 0) * 100) / 100,
         total_rewards: Math.round(allRewards.reduce((s, r) => s + r.amount, 0) * 100) / 100,
         total_count: allRewards.length
       }
