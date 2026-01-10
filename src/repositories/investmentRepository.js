@@ -1,12 +1,12 @@
 import pool from '../config/database.js';
 
-// --- FIX 1: USE DATABASE COLUMNS DIRECTLY ---
+// --- FIX 1: INSERT WITH EXPLICIT PRICE ---
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
   client
 ) => {
-  const safeDuration = duration || 30;
-  const safePrice = price || 0;
+  const safeDuration = Number(duration) || 30;
+  const safePrice = Number(price) || 0;
 
   const { rows } = await client.query(
     `
@@ -42,7 +42,7 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
   return rows[0];
 };
 
-// --- FIX 2: PULL REAL AMOUNT AND DAYS LEFT ---
+// --- FIX 2: PULL REAL AMOUNT AND DAYS LEFT (Synced with VIP Table) ---
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
     SELECT 
@@ -54,15 +54,16 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.start_date,
       i.end_date,
       i.status,
-      it.itemname as "itemname",
-      COALESCE(i.price, i.amount, it.price) as "price", -- FIX: Uses investment price, not shop price
-      COALESCE(i.price, i.amount, it.price) as "amount", -- FIX: For UI compatibility
-      it.dailyincome as "dailyIncome",
-      it.itemimage as "itemimage",
-      COALESCE(i.duration, 35) as duration,
-      EXTRACT(DAY FROM (i.end_date - CURRENT_DATE)) as "days_left" -- FIX: Real remaining days
+      COALESCE(it.itemname, cv.name, 'Investment Plan') as itemname,
+      COALESCE(i.price, i.amount, it.price, 0) as price,
+      COALESCE(i.price, i.amount, it.price, 0) as amount,
+      COALESCE(it.dailyincome, cv.daily_earnings, i.daily_earning) as dailyincome,
+      COALESCE(it.itemimage, cv.image_url) as itemimage,
+      COALESCE(i.duration, it.duration, 30) as duration,
+      COALESCE(i.days_left, EXTRACT(DAY FROM (i.end_date - CURRENT_DATE))) as days_left
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
+    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
     WHERE i.user_id = $1
     ORDER BY i.start_date DESC
   `;
@@ -89,8 +90,8 @@ export const getAllInvestmentsWithDetails = async () => {
       i.start_date,
       i.status,
       u.full_name,
-      COALESCE(it.itemname, cv.name) as plan_name,
-      i.price as investment_amount
+      COALESCE(it.itemname, cv.name, 'Plan') as plan_name,
+      COALESCE(i.price, i.amount) as investment_amount
     FROM investments i
     INNER JOIN users u ON i.user_id = u.id
     LEFT JOIN items it ON i.item_id = it.id
@@ -113,7 +114,7 @@ export const getInvestmentEarningsHistory = async (userId) => {
       i.start_date as date,
       i.daily_earning,
       i.total_earning,
-      COALESCE(it.itemname, cv.name) as source_name,
+      COALESCE(it.itemname, cv.name, 'Investment') as source_name,
       'investment_roi' as reward_type
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
