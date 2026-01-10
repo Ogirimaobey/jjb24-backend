@@ -1,11 +1,14 @@
 import pool from '../config/database.js';
 
-// --- FIX 1: INSERT WITH DYNAMIC DURATION ---
+/**
+ * FIX 1: Universal Insert
+ * Works for both standard Items and VIP products.
+ * Uses the duration provided at purchase to set end_date.
+ */
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
   client
 ) => {
-  // We use the duration passed from the item/vip selection directly
   const { rows } = await client.query(
     `
     INSERT INTO investments
@@ -40,21 +43,27 @@ export const updateInvestmentEarnings = async (investmentId, totalEarning) => {
   return rows[0];
 };
 
-// --- FIX 2: PULL REAL AMOUNT, NAMES, AND DURATION (Synced) ---
+/**
+ * FIX 2: Universal User Investment Fetch
+ * - Joins both items and casper_vip tables.
+ * - Prioritizes the price/amount in the investment record (Fixes the 8k error).
+ * - Pulls the hard days_left number from the DB (Fixes the null error).
+ */
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
     SELECT 
       i.id,
       i.user_id,
       i.item_id,
+      i.caspervip_id,
       i.daily_earning,
       i.total_earning,
       i.start_date,
       i.end_date,
       i.status,
       COALESCE(it.itemname, cv.name, 'Investment Plan') as itemname,
-      COALESCE(i.price, i.amount, it.price, 0) as price,
-      COALESCE(i.price, i.amount, it.price, 0) as amount,
+      COALESCE(i.price, i.amount, it.price, cv.price, 0) as price,
+      COALESCE(i.price, i.amount, it.price, cv.price, 0) as amount,
       COALESCE(it.dailyincome, cv.daily_earnings, i.daily_earning) as dailyincome,
       COALESCE(it.itemimage, cv.image_url) as itemimage,
       COALESCE(i.duration, it.duration, cv.duration) as duration,
@@ -69,7 +78,10 @@ export const getAllInvestmentsByUserId = async (userId) => {
   return rows;
 };
 
-// --- FIX 3: ADMIN TOTAL VOLUME FIX ---
+/**
+ * FIX 3: Global Admin Stats
+ * Correctly sums volume from the verified price/amount columns.
+ */
 export const getTotalAmountInvested = async () => {
   const query = `
     SELECT SUM(COALESCE(price, amount, 0)) as total
@@ -89,7 +101,7 @@ export const getAllInvestmentsWithDetails = async () => {
       i.status,
       u.full_name,
       COALESCE(it.itemname, cv.name, 'Plan') as plan_name,
-      COALESCE(i.price, i.amount) as investment_amount
+      COALESCE(i.price, i.amount, 0) as investment_amount
     FROM investments i
     INNER JOIN users u ON i.user_id = u.id
     LEFT JOIN items it ON i.item_id = it.id
