@@ -21,12 +21,12 @@ dotenv.config();
 const app = express();
 app.use(cookieParser());
 
-// FIX 1: INCREASE LIMITS FOR IMAGE UPLOADS (PRESERVED)
+// INCREASE LIMITS FOR IMAGE UPLOADS
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // =====================================================
-// --- THE FIX: ALLOW 'PATCH' (BLOCK) AND 'PUT' (EDIT) ---
+// --- ALLOW 'PATCH' (BLOCK) AND 'PUT' (EDIT) ---
 // =====================================================
 app.use(cors({ 
     origin: true, 
@@ -42,21 +42,51 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/investments', investmentRoute);
 
-// --- 3. REPAIR UTILITIES ---
+// --- 3. REPAIR UTILITIES & SYNC ENGINE ---
 
-// NEW: FIX TRANSACTIONS TABLE (Adds Receipt Column)
-app.get('/fix-transactions-table', async (req, res) => {
+// UNIVERSAL MIRROR REPAIR: RUN THIS ONCE TO FIX THE 8K/150K LOOP
+app.get('/api/repair-database-sync', async (req, res) => {
     try {
         const client = await pool.connect();
-        // This ensures the database can store the screenshot links we just set up
+        console.log("[Repair] Starting Database Truth Sync...");
+
+        // 1. Force fix the 150k Vodka Plan (Syncing price and yield)
+        await client.query(`
+            UPDATE investments 
+            SET price = 150000, 
+                amount = 150000, 
+                daily_earning = 7500, 
+                duration = 50 
+            WHERE user_id = 322 AND (price = 8000 OR price IS NULL);
+        `);
+
+        // 2. Force fix the 15k Algor Plan (Syncing price and yield)
+        await client.query(`
+            UPDATE investments 
+            SET price = 15000, 
+                amount = 15000, 
+                daily_earning = 750, 
+                duration = 35 
+            WHERE user_id = 322 AND item_id = 21;
+        `);
+
+        // 3. Add missing columns to transactions if they don't exist
         await client.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS receipt_url TEXT;`);
+
         client.release();
-        res.send(`<h1 style="color:green">✅ DATABASE UPDATED!</h1><p>The 'receipt_url' column is now active. Manual receipts will now save correctly.</p>`);
+        res.send(`
+            <div style="font-family:sans-serif; text-align:center; padding:50px;">
+                <h1 style="color:green">✅ DATABASE SYNC COMPLETE</h1>
+                <p>Your ₦150,000 and ₦15,000 plans are now corrected in the database.</p>
+                <p>Please logout and login on your phone to see the changes.</p>
+            </div>
+        `);
     } catch (error) {
-        res.status(500).send(`<h1 style="color:red">❌ FAILED: ${error.message}</h1>`);
+        res.status(500).send(`<h1 style="color:red">❌ SYNC FAILED: ${error.message}</h1>`);
     }
 });
 
+// LEGACY REPAIR: VIP TABLE FIX
 app.get('/fix-vip-table', async (req, res) => {
     try {
         const client = await pool.connect();
@@ -65,8 +95,8 @@ app.get('/fix-vip-table', async (req, res) => {
             CREATE TABLE casper_vip (
                 id SERIAL PRIMARY KEY,   
                 name VARCHAR(100) NOT NULL,
-                price NUMERIC(10, 2) NOT NULL,
-                daily_earnings NUMERIC(10, 2) NOT NULL,
+                price NUMERIC(15, 2) NOT NULL,
+                daily_earnings NUMERIC(15, 2) NOT NULL,
                 duration_days INTEGER NOT NULL,
                 total_returns NUMERIC(20, 2) NOT NULL,
                 image VARCHAR(255),
@@ -86,9 +116,8 @@ app.get('/fix-vip-table', async (req, res) => {
         await client.query(seedQuery);
         await client.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS duration INTEGER DEFAULT 30;`);
         client.release();
-        res.send(`<h1 style="color:green">✅ REPAIR SUCCESSFUL!</h1>`);
+        res.send(`<h1 style="color:green">✅ VIP REPAIR SUCCESSFUL!</h1>`);
     } catch (error) {
-        console.error(error);
         res.send(`<h1 style="color:red">❌ ERROR: ${error.message}</h1>`);
     }
 });
