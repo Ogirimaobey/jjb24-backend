@@ -2,6 +2,7 @@ import pool from '../config/database.js';
 
 /**
  * REBUILD 1: Strict Database Insert
+ * FIX: Applied explicit integer casting ($6::integer) to prevent type mismatch errors.
  */
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
@@ -11,7 +12,7 @@ export const insertInvestment = async (
     `
     INSERT INTO investments
     (user_id, item_id, caspervip_id, daily_earning, total_earning, start_date, end_date, status, price, amount, duration, days_left)
-    VALUES ($1, $2, $3, $4, $5, NOW(), NOW() + ($6 || ' days')::interval, 'active', $7, $7, $6, $6)
+    VALUES ($1, $2, $3, $4, $5, NOW(), NOW() + ($6 || ' days')::interval, 'active', $7, $7, $6::integer, $6::integer)
     RETURNING *;
     `,
     [userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price]
