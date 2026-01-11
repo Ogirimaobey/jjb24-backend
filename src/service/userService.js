@@ -254,6 +254,16 @@ export const setWithdrawalPin = async (userId, rawPin) => {
  return { success: true, message: "Security PIN set successfully" };
 };
 
+// --- VERIFY WITHDRAWAL PIN (FIX FOR RENDER ERROR) ---
+export const verifyWithdrawalPin = async (userId, rawPin) => {
+ const storedHash = await getUserPin(userId);
+ if (!storedHash) throw new Error("Please set a withdrawal PIN first.");
+ 
+ const isMatch = await bcrypt.compare(rawPin, storedHash);
+ if (!isMatch) throw new Error("Incorrect Transaction PIN");
+ return true;
+};
+
 // --- RESET WITHDRAWAL PIN ---
 export const resetWithdrawalPin = async (userId, newPin) => {
   if (!/^\d{4}$/.test(newPin)) throw new Error("New PIN must be exactly 4 digits");
@@ -321,18 +331,12 @@ export const distributeInvestmentCommissions = async (investorId, amount) => {
  }
 };
 
-// --- GET DASHBOARD DATA (STRICT REBUILD - NO DEFAULTS) ---
+// --- GET DASHBOARD DATA (STRICT REBUILD) ---
 export const getUserDashboardData = async (userId) => {
  try {
-    // We fetch from the updated Repository which uses STRICT JOINs
     const investments = await getAllInvestmentsByUserId(userId);
-    
-    // We map only what exists in the database. 
-    // If itemname is null, the frontend will show an empty slot, signaling a DB error 
-    // rather than lying to the user with "Chamdor".
     const activeInvestments = investments.map(inv => ({
         id: inv.id,
-        // Using strict naming to ensure frontend handshake is 100% accurate
         itemName: inv.itemname, 
         investmentAmount: Number(inv.price),
         dailyYield: Number(inv.daily_earning),
