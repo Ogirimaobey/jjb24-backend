@@ -1,5 +1,11 @@
 import express from "express";
-import { loginAdmin, getAdminStats, getAllUsersForAdmin, getAllInvestmentsForAdmin } from "../service/adminService.js";
+import { 
+  loginAdmin, 
+  getAdminStats, 
+  getAllUsersForAdmin, 
+  getAllInvestmentsForAdmin, 
+  manualCreditUser 
+} from "../service/adminService.js";
 import upload from '../middleware/upload.js';
 import { uploadItem, deleteItem, updateItem } from '../service/itemService.js';
 import { createVip, getAllVips, getVipById, updateVip, deleteVip } from '../service/vipService.js';
@@ -173,6 +179,22 @@ router.post('/withdrawals/reject/:id', verifyToken, verifyAdmin, async (req, res
   try {
     const { id } = req.params; // Matches the 'reference' expected by transactionService
     const result = await rejectWithdrawal(id);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ========== MANUAL USER CREDITING (PETER'S FIX) ==========
+
+// Admin manually credits a user's account balance
+router.post('/credit-user', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { userId, amount } = req.body;
+    if (!userId || !amount) {
+      return res.status(400).json({ success: false, message: "User ID and Amount are required" });
+    }
+    const result = await manualCreditUser(userId, amount);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
