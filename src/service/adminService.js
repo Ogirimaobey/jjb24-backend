@@ -1,8 +1,9 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs"; // FIXED: Changed from 'bcrypt' to 'bcryptjs'
 import { insertAdmin, findAdminByEmail } from "../repositories/adminRepository.js";
-import { getTotalUsersCount, getRecentUsers, getAllUsers } from "../repositories/userRepository.js";
+import { getTotalUsersCount, getRecentUsers, getAllUsers, updateUserBalance, findUserById } from "../repositories/userRepository.js";
 import { getTotalInvestmentsCount, getTotalAmountInvested, getAllInvestmentsWithDetails } from "../repositories/investmentRepository.js";
+import { createAdminCreditTransaction } from "../repositories/transactionRepository.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error("JWT_SECRET is not defined in environment variables");
@@ -32,7 +33,6 @@ export const loginAdmin = async (email, password) => {
   }
 
   // Check if this admin record is actually authorized
-  // If your 'admins' table doesn't have an 'is_admin' column, we assume true if they are in this table
   const isAdminFlag = admin.is_admin !== undefined ? admin.is_admin : true;
 
   // FIXED: Added 'is_admin: true' so the middleware recognizes this user as an admin
@@ -58,6 +58,42 @@ export const loginAdmin = async (email, password) => {
       is_admin: isAdminFlag
     }
   };
+};
+
+/** * Manual Credit User (Peter's Fix)
+ * This function allows admins to add money to a user's wallet manually.
+ */
+export const manualCreditUser = async (userId, amount) => {
+  try {
+    // 1. Verify user exists
+    const user = await findUserById(userId);
+    if (!user) throw new Error("Target user not found");
+
+    // 2. Normalize and Calculate new balance
+    const creditAmount = Number(amount);
+    if (isNaN(creditAmount) || creditAmount <= 0) {
+      throw new Error("Invalid credit amount. Must be a positive number.");
+    }
+
+    const currentBalance = Number(user.balance || 0);
+    const newBalance = currentBalance + creditAmount;
+
+    // 3. Update Balance in Repository
+    await updateUserBalance(userId, newBalance);
+
+    // 4. Create Transaction Record for Ledger Clarity
+    await createAdminCreditTransaction(userId, creditAmount);
+
+    console.log(`[Admin Action] User ${userId} credited with ${creditAmount}. New balance: ${newBalance}`);
+
+    return { 
+      message: `Successfully credited ${user.full_name} with ${creditAmount}`,
+      newBalance 
+    };
+  } catch (error) {
+    console.error(`[Admin Action Error] ${error.message}`);
+    throw new Error(`Failed to credit user: ${error.message}`);
+  }
 };
 
 /** Get Admin Dashboard Stats */
