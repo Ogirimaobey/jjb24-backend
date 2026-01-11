@@ -2,7 +2,6 @@ import pool from '../config/database.js';
 
 /**
  * REBUILD 1: Strict Database Insert
- * No more hardcoded strings. We insert exactly what the user selected.
  */
 export const insertInvestment = async (
   { userId, itemId, casperVipId, dailyEarning, totalEarning, duration, price }, 
@@ -22,8 +21,7 @@ export const insertInvestment = async (
 
 /**
  * REBUILD 2: Universal User Investment Fetch (THE TRUTH LAYER)
- * This removes the "Winery Plan" and "Chamdor" fallback logic.
- * It strictly maps the database columns to the frontend keys.
+ * Corrected: Column name is 'caspervip_id' (No underscore)
  */
 export const getAllInvestmentsByUserId = async (userId) => {
   const query = `
@@ -59,7 +57,7 @@ export const getAllInvestmentsByUserId = async (userId) => {
 
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
-    LEFT JOIN casper_vip cv ON i.casper_vip_id = cv.id
+    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
     WHERE i.user_id = $1 AND i.status = 'active'
     ORDER BY i.start_date DESC
   `;
@@ -102,7 +100,7 @@ export const getAllInvestmentsWithDetails = async () => {
     FROM investments i
     INNER JOIN users u ON i.user_id = u.id
     LEFT JOIN items it ON i.item_id = it.id
-    LEFT JOIN casper_vip cv ON i.casper_vip_id = cv.id
+    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
     ORDER BY i.start_date DESC
   `;
   const { rows } = await pool.query(query);
@@ -122,6 +120,7 @@ export const getTotalInvestmentsCount = async () => {
 
 /**
  * FIX: Re-adding the missing export required by investmentService.js
+ * Corrected: Column name is 'caspervip_id'
  */
 export const getInvestmentEarningsHistory = async (userId) => {
   const query = `
@@ -134,7 +133,7 @@ export const getInvestmentEarningsHistory = async (userId) => {
       'investment_roi' AS "reward_type"
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
-    LEFT JOIN casper_vip cv ON i.casper_vip_id = cv.id
+    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
     WHERE i.user_id = $1
     ORDER BY i.start_date DESC
   `;
