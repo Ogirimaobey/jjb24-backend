@@ -76,7 +76,7 @@ export const forgotPassword = async (email) => {
                 <h2 style="color: #6a0dad;">Password Reset Request</h2>
                 <p>We received a request to reset your password for JJB24.</p>
                 <p>Your temporary login password is: <b style="font-size: 18px; color: #111;">${tempPassword}</b></p>
-                <p style="background: #fff4e5; padding: 10px; border-radius: 5px; color: #663c00;">
+                <p style="background: #fff4e5; padding: 10px; border-radius: 5px; color: #633c00;">
                     <b>Important:</b> Please login immediately and change this password from your profile settings.
                 </p>
                 <p>If you did not request this, please secure your account immediately.</p>
@@ -178,7 +178,7 @@ export const verifyUserOtp = async (email, otp) => {
  };
 };
 
-// --- LOGIN USER (FIXED FOR ADMIN AUTHORIZATION) ---
+// --- LOGIN USER ---
 export const loginUser = async ({ email, phone, password }) => {
  let user;
  if (email && email.trim() !== "") {
@@ -200,7 +200,6 @@ export const loginUser = async ({ email, phone, password }) => {
  const isMatch = await bcrypt.compare(password, user.password_hash);
  if (!isMatch) throw new Error('Invalid credentials');
 
- // MIRROR FIX: Peter Admin Recognition
  const userRole = user.is_admin ? 'admin' : (user.role || 'user');
 
  const token = jwt.sign(
@@ -277,16 +276,6 @@ export const changeUserPassword = async (userId, oldPassword, newPassword) => {
   return { success: true, message: "Login password updated successfully" };
 };
 
-// --- VERIFY WITHDRAWAL PIN ---
-export const verifyWithdrawalPin = async (userId, rawPin) => {
- const storedHash = await getUserPin(userId);
- if (!storedHash) throw new Error("Please set a withdrawal PIN first.");
- 
- const isMatch = await bcrypt.compare(rawPin, storedHash);
- if (!isMatch) throw new Error("Incorrect Transaction PIN");
- return true;
-};
-
 // --- MLM COMMISSION LOGIC ---
 export const distributeInvestmentCommissions = async (investorId, amount) => {
  const client = await pool.connect();
@@ -332,6 +321,34 @@ export const distributeInvestmentCommissions = async (investorId, amount) => {
  }
 };
 
+// --- GET DASHBOARD DATA (STRICT REBUILD - NO DEFAULTS) ---
+export const getUserDashboardData = async (userId) => {
+ try {
+    // We fetch from the updated Repository which uses STRICT JOINs
+    const investments = await getAllInvestmentsByUserId(userId);
+    
+    // We map only what exists in the database. 
+    // If itemname is null, the frontend will show an empty slot, signaling a DB error 
+    // rather than lying to the user with "Chamdor".
+    const activeInvestments = investments.map(inv => ({
+        id: inv.id,
+        // Using strict naming to ensure frontend handshake is 100% accurate
+        itemName: inv.itemname, 
+        investmentAmount: Number(inv.price),
+        dailyYield: Number(inv.daily_earning),
+        totalAccumulated: Number(inv.total_earning),
+        daysLeft: Number(inv.days_left),
+        status: inv.status,
+        start_date: inv.start_date
+    }));
+
+    return { active_investments: activeInvestments };
+ } catch (err) {
+    console.error("[Dashboard Sync Error]", err);
+    throw err;
+ }
+};
+
 // --- GET TEAM DATA ---
 export const getUserReferralData = async (userId) => {
  const client = await pool.connect();
@@ -365,67 +382,17 @@ export const getUserReferralData = async (userId) => {
  }
 };
 
-// --- GET DASHBOARD DATA (THE CHAMDOR KILLER - FINAL SYNC) ---
-export const getUserDashboardData = async (userId) => {
- try {
-    // 1. Fetch from Repository (fixed SQL with COALESCE)
-    const investments = await getAllInvestmentsByUserId(userId);
-    
-    const activeInvestments = investments.map(inv => {
-        // LINE-BY-LINE FIX:
-        // Deleted guesswork (||). We strictly use the database output.
-        // inv.itemname is the joined Vodka/Algor name.
-        // inv.price is the actual i.amount paid (150k/15k).
-        const displayName = inv.itemname || 'Winery Plan';
-        const actualPaid = Number(inv.price) || 0;
-        const daysRemaining = Number(inv.days_left) || 0;
-        const dailyIncome = Number(inv.daily_earning) || 0;
-
-        return {
-            id: inv.id,
-            // REDUNDANT SYNC FOR FRONTEND HANDSHAKE
-            itemname: displayName,
-            itemName: displayName,
-            
-            price: actualPaid,
-            amount: actualPaid,
-            investmentAmount: actualPaid,
-            
-            daily_earning: dailyIncome,
-            dailyYield: dailyIncome,
-            
-            total_earning: Number(inv.total_earning) || 0,
-            totalAccumulated: Number(inv.total_earning) || 0,
-            
-            days_left: daysRemaining,
-            daysLeft: daysRemaining,
-            
-            status: inv.status || 'active',
-            start_date: inv.start_date
-        };
-    });
-
-    return { active_investments: activeInvestments };
- } catch (err) {
-    console.error("[Dashboard Sync Error]", err);
-    throw err;
- }
-};
-
-// --- Edit Email ---
+// --- UTILITY SERVICES ---
 export const editUserEmail = async (userId, newEmail) => {
  if (!newEmail.includes("@")) throw new Error("Invalid email");
  await pool.query('UPDATE users SET email = $1 WHERE id = $2', [newEmail.toLowerCase().trim(), userId]);
  return { success: true };
 };
 
-// --- Get Profile ---
 export const getUserProfile = async (userId) => {
- const user = await findUserById(userId);
- return user;
+ return await findUserById(userId);
 };
 
-// --- ADMIN FUNDING FUNCTION ---
 export const adminFundUser = async (email, amount) => {
    const cleanEmail = email.toLowerCase().trim();
    const user = await findUserByEmail(cleanEmail);
@@ -445,63 +412,23 @@ export const adminFundUser = async (email, amount) => {
    return { success: true, newBalance };
 };
 
-// --- GET ALL USERS ---
 export const getAllUsers = async () => {
-   const userQuery = `SELECT * FROM users ORDER BY created_at DESC`;
-   const { rows: users } = await pool.query(userQuery);
-
-   const depositQuery = `
-       SELECT user_id, SUM(amount) as total, MAX(receipt_url) as latest_receipt
-       FROM transactions 
-       WHERE type = 'deposit' AND status = 'success' 
-       GROUP BY user_id
-   `;
-   const { rows: deposits } = await pool.query(depositQuery);
-
-   const depositMap = {};
-   deposits.forEach(d => { 
-       depositMap[d.user_id] = { 
-           total: Number(d.total), 
-           receipt: d.latest_receipt 
-       }; 
-   });
-
-   const usersWithDeposits = users.map(user => ({
-       ...user,
-       total_deposited: depositMap[user.id]?.total || 0,
-       receipt_url: depositMap[user.id]?.receipt || null
-   }));
-
-   return usersWithDeposits;
+   const { rows: users } = await pool.query(`SELECT id, full_name, email, phone_number, balance, is_admin, account_status, created_at FROM users ORDER BY created_at DESC`);
+   return users;
 };
 
-// --- BLOCK / SUSPEND USER ---
 export const updateUserStatus = async (userId, status, reason) => {
-    let isBlocked = false;
-    if (status === 'suspended' || status === 'blocked') {
-        isBlocked = true;
-    }
-
-    const query = `
-        UPDATE users 
-        SET account_status = $2, is_blocked = $3, block_reason = $4
-        WHERE id = $1
-        RETURNING id, full_name, account_status, is_blocked;
-    `;
-    
+    const isBlocked = (status === 'suspended' || status === 'blocked');
+    const query = `UPDATE users SET account_status = $2, is_blocked = $3, block_reason = $4 WHERE id = $1 RETURNING id, account_status;`;
     const { rows } = await pool.query(query, [userId, status, isBlocked, reason]);
     if (rows.length === 0) throw new Error("User not found");
-    
     return { success: true, user: rows[0] };
 };
 
-// --- ADMIN EDIT USER ---
 export const adminUpdateUser = async (userId, updateData) => {
     const { full_name, email, phone_number, balance } = updateData;
-    
     const query = `
-        UPDATE users 
-        SET 
+        UPDATE users SET 
             full_name = COALESCE($2, full_name),
             email = COALESCE($3, email),
             phone_number = COALESCE($4, phone_number),
@@ -509,10 +436,6 @@ export const adminUpdateUser = async (userId, updateData) => {
         WHERE id = $1
         RETURNING id, full_name, email, phone_number, balance;
     `;
-    
-    const cleanEmail = email ? email.toLowerCase().trim() : null;
-    const { rows } = await pool.query(query, [userId, full_name, cleanEmail, phone_number, balance]);
-    if (rows.length === 0) throw new Error("User not found");
-    
+    const { rows } = await pool.query(query, [userId, full_name, email?.toLowerCase().trim(), phone_number, balance]);
     return { success: true, user: rows[0] };
 };
