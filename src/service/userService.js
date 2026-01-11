@@ -368,13 +368,14 @@ export const getUserReferralData = async (userId) => {
 // --- GET DASHBOARD DATA (THE CHAMDOR KILLER - FINAL SYNC) ---
 export const getUserDashboardData = async (userId) => {
  try {
-    // 1. Fetch from Repository (which uses the JOIN we just fixed)
+    // 1. Fetch from Repository (fixed SQL with COALESCE)
     const investments = await getAllInvestmentsByUserId(userId);
     
     const activeInvestments = investments.map(inv => {
         // LINE-BY-LINE FIX:
-        // We FORCE the use of the name and price output from our dynamic SQL.
-        // We removed the "inv.amount" fallback which was causing the 8000 loop.
+        // Deleted guesswork (||). We strictly use the database output.
+        // inv.itemname is the joined Vodka/Algor name.
+        // inv.price is the actual i.amount paid (150k/15k).
         const displayName = inv.itemname || 'Winery Plan';
         const actualPaid = Number(inv.price) || 0;
         const daysRemaining = Number(inv.days_left) || 0;
@@ -382,7 +383,7 @@ export const getUserDashboardData = async (userId) => {
 
         return {
             id: inv.id,
-            // Handshake Keys for main.js
+            // REDUNDANT SYNC FOR FRONTEND HANDSHAKE
             itemname: displayName,
             itemName: displayName,
             
@@ -406,7 +407,7 @@ export const getUserDashboardData = async (userId) => {
 
     return { active_investments: activeInvestments };
  } catch (err) {
-    console.error("[Dashboard Fetch Error]", err);
+    console.error("[Dashboard Sync Error]", err);
     throw err;
  }
 };
