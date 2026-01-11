@@ -37,53 +37,44 @@ const createTransactionsTable = `
   );
 `;
 
-const createDailyTaskTable = `
-  CREATE TABLE IF NOT EXISTS daily_tasks (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    task_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    tasks_completed INTEGER NOT NULL DEFAULT 0,
-    UNIQUE (user_id, task_date)
-  );
-`;
-
-// UPDATED: Changed created_at to start_date and added status
+// FIXED: Added missing storage columns (price, amount, duration, end_date)
 const createInvestmentTable = `
   CREATE TABLE IF NOT EXISTS investments (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+    caspervip_id INTEGER,
+    price NUMERIC(15, 2) DEFAULT 0,
+    amount NUMERIC(15, 2) DEFAULT 0,
     daily_earning NUMERIC(15, 2) DEFAULT 0,
     total_earning NUMERIC(15, 2) DEFAULT 0,
+    duration INTEGER DEFAULT 30,
     start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    end_date TIMESTAMP,
     status VARCHAR(20) DEFAULT 'active'
   );
 `;
 
 const alterTableInvestments = `
-  ALTER TABLE investments
-  ADD COLUMN IF NOT EXISTS caspervip_id INTEGER;
+  -- Ensure CasperVIP link exists
+  ALTER TABLE investments ADD COLUMN IF NOT EXISTS caspervip_id INTEGER;
 
-  ALTER TABLE investments
-  DROP CONSTRAINT IF EXISTS investments_caspervip_id_fkey, 
-  ADD CONSTRAINT investments_caspervip_id_fkey
-  FOREIGN KEY (caspervip_id)
-  REFERENCES casper_vip(id)
-  ON DELETE CASCADE;
+  -- ENSURE PRICE AND AMOUNT STORAGE EXISTS (THE CHAMDOR KILLER)
+  ALTER TABLE investments ADD COLUMN IF NOT EXISTS price NUMERIC(15, 2) DEFAULT 0;
+  ALTER TABLE investments ADD COLUMN IF NOT EXISTS amount NUMERIC(15, 2) DEFAULT 0;
+  ALTER TABLE investments ADD COLUMN IF NOT EXISTS duration INTEGER DEFAULT 30;
+  ALTER TABLE investments ADD COLUMN IF NOT EXISTS end_date TIMESTAMP;
 
-  -- UPDATED: Status and start_date column maintenance
-  ALTER TABLE investments ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+  -- Cleanup constraints
+  ALTER TABLE investments DROP CONSTRAINT IF EXISTS investments_caspervip_id_fkey;
   
-  -- Logic to ensure start_date exists if it was previously created_at
+  -- Handle date column renaming
   DO $$ 
   BEGIN 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='investments' AND column_name='created_at') THEN
       ALTER TABLE investments RENAME COLUMN created_at TO start_date;
     END IF;
   END $$;
-
-  -- REMOVED: The check constraint that was causing the crash
-  ALTER TABLE investments DROP CONSTRAINT IF EXISTS investments_only_one_product_check;
 `;
 
 const alterTableUsers = `
@@ -92,17 +83,14 @@ const alterTableUsers = `
   ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS balance NUMERIC(15, 2) DEFAULT 0.00,
   ADD COLUMN IF NOT EXISTS referral_count INTEGER DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS referral_code_used VARCHAR(50), 
   ADD COLUMN IF NOT EXISTS own_referral_code VARCHAR(50) UNIQUE,
   ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS otp_code VARCHAR(10),   
   ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP,
-  ADD COLUMN IF NOT EXISTS referrer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS account_status VARCHAR(20) DEFAULT 'active',
   ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS block_reason TEXT,
-  ADD COLUMN IF NOT EXISTS withdrawal_pin TEXT,
-  DROP COLUMN IF EXISTS type;
+  ADD COLUMN IF NOT EXISTS withdrawal_pin TEXT;
 `;
 
 const alterTableTransactions = `
@@ -113,11 +101,8 @@ const alterTableTransactions = `
     ADD COLUMN IF NOT EXISTS account_name VARCHAR(100),
     ADD COLUMN IF NOT EXISTS receipt_url TEXT;
   
-  ALTER TABLE transactions
-    DROP CONSTRAINT IF EXISTS transactions_type_check;
-  
-  ALTER TABLE transactions
-    ADD CONSTRAINT transactions_type_check 
+  ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
+  ALTER TABLE transactions ADD CONSTRAINT transactions_type_check 
     CHECK (type IN ('deposit', 'withdrawal', 'investment', 'investment_roi', 'referral_bonus', 'admin_credit', 'welcome_bonus'));
 `;
 
@@ -127,13 +112,9 @@ const createItemTable = `
     itemName VARCHAR(100) NOT NULL,
     price NUMERIC(15, 2) NOT NULL,
     dailyIncome NUMERIC(15, 2) NOT NULL,
-    itemImage VARCHAR(255) NOT NULL
+    itemImage VARCHAR(255) NOT NULL,
+    duration INTEGER DEFAULT 30
   );
-`;
-
-const alterTableItems = `
-  ALTER TABLE items 
-  ADD COLUMN IF NOT EXISTS duration INTEGER DEFAULT 30;
 `;
 
 const createVipTable = `
@@ -145,8 +126,7 @@ const createVipTable = `
     duration_days INTEGER NOT NULL,
     total_returns NUMERIC(20, 2) NOT NULL,
     image VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 `;
 
@@ -162,28 +142,21 @@ const seedVipProducts = `
 
 const setupDatabase = async () => {
   try {
-    console.log('Connecting to the database to set up tables...');
+    console.log('[DB] Running initialization...');
     const client = await pool.connect();
 
     await client.query(createUserTable);
     await client.query(createTableAdmin);
     await client.query(alterTableUsers);
+    await client.query(createItemTable);
+    await client.query(createVipTable);
+    await client.query(createInvestmentTable); // Now creates with price/amount
+    await client.query(alterTableInvestments); // Patches old tables with price/amount
     await client.query(createTransactionsTable);
     await client.query(alterTableTransactions);
-    await client.query(createDailyTaskTable);
-    
-    await client.query(createItemTable);
-    await client.query(alterTableItems);
-    
-    await client.query(createVipTable);
-    await client.query(createInvestmentTable);
-    await client.query(alterTableInvestments);
-    
-    console.log('Tables created/verified.');
-    console.log('Seeding VIP Products...');
     await client.query(seedVipProducts);
-    console.log('SUCCESS: VIP Products 101-104 ensured.');
 
+    console.log('[DB] Schema verified and storage columns synced.');
     client.release();
   } catch (error) {
     console.error('Error setting up the database:', error);
