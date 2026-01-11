@@ -163,13 +163,8 @@ export const verifyUserOtp = async (email, otp) => {
  const newBalance = Number(user.balance) + welcomeBonus;
  await updateUserBalance(user.id, newBalance);
  
- await createTransaction({
-      userId: user.id, 
-      amount: welcomeBonus, 
-      type: 'welcome_bonus',
-      status: 'success',
-      description: 'Welcome Bonus'
- });
+ // FIX: Corrected argument mapping for createTransaction (separate args, not object)
+ await createTransaction(user.id, welcomeBonus, `WELCOME-${user.id}-${Date.now()}`, 'deposit');
 
  return {
   success: true,
@@ -397,21 +392,26 @@ export const getUserProfile = async (userId) => {
  return await findUserById(userId);
 };
 
+// --- ADMIN SERVICES ---
+
 export const adminFundUser = async (email, amount) => {
    const cleanEmail = email.toLowerCase().trim();
    const user = await findUserByEmail(cleanEmail);
    if (!user) throw new Error("User email not found");
 
-   const newBalance = Number(user.balance) + Number(amount);
+   const fundAmount = Number(amount);
+   const currentBalance = Number(user.balance || 0);
+   const newBalance = currentBalance + fundAmount;
+   
    await updateUserBalance(user.id, newBalance);
 
-   await createTransaction({
-       userId: user.id,
-       amount: amount,
-       type: 'admin_credit',
-       status: 'success',
-       description: 'Funded by Admin'
-   });
+   // FIX: Corrected argument mapping for createTransaction
+   await createTransaction(
+       user.id, 
+       fundAmount, 
+       `ADMIN-FUND-${user.id}-${Date.now()}`, 
+       'deposit'
+   );
 
    return { success: true, newBalance };
 };
