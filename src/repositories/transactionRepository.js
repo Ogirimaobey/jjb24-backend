@@ -101,14 +101,14 @@ export const getPendingWithdrawals = async () => {
 export const getAllTransactionsByUserId = async (userId) => {
   const query = `
     SELECT 
-      id,
-      amount,
-      status,
-      reference,
-      type,
-      created_at,
-      bank_name,
-      account_name,
+      id, 
+      amount, 
+      status, 
+      reference, 
+      type, 
+      created_at, 
+      bank_name, 
+      account_name, 
       receipt_url
     FROM transactions 
     WHERE user_id = $1 
@@ -121,11 +121,11 @@ export const getAllTransactionsByUserId = async (userId) => {
 export const getWithdrawalTransactionsByUserId = async (userId) => {
   const query = `
     SELECT 
-      id,
-      amount,
-      status,
-      reference,
-      type,
+      id, 
+      amount, 
+      status, 
+      reference, 
+      type, 
       created_at
     FROM transactions 
     WHERE user_id = $1 AND type = 'withdrawal'
@@ -138,12 +138,12 @@ export const getWithdrawalTransactionsByUserId = async (userId) => {
 export const getDepositTransactionsByUserId = async (userId) => {
   const query = `
     SELECT 
-      id,
-      amount,
-      status,
-      reference,
-      type,
-      created_at,
+      id, 
+      amount, 
+      status, 
+      reference, 
+      type, 
+      created_at, 
       receipt_url
     FROM transactions 
     WHERE user_id = $1 AND type = 'deposit'
@@ -161,5 +161,19 @@ export const createManualDepositRecord = async (userId, amount, reference, recei
     RETURNING *;
   `;
   const { rows } = await pool.query(query, [userId, amount, reference, receiptUrl]);
+  return rows[0];
+};
+
+/**
+ * FIX FOR PETER: Creates a record for manual balance adjustments by Admin.
+ */
+export const createAdminCreditTransaction = async (userId, amount) => {
+  const reference = `ADMIN-CREDIT-${userId}-${Date.now()}`;
+  const query = `
+    INSERT INTO transactions (user_id, amount, reference, status, type, created_at)
+    VALUES ($1, $2, $3, 'success', 'deposit', NOW())
+    RETURNING *;
+  `;
+  const { rows } = await pool.query(query, [userId, amount, reference]);
   return rows[0];
 };
