@@ -29,7 +29,6 @@ export const createInvestment = async (userId, itemId) => {
     const newUserBalance = Number(user.balance) - itemPrice;
     await updateUserBalance(user.id, newUserBalance, client);
 
-    // REBUILD: We pass the exact daily income from the item to the investment row
     const investment = await insertInvestment(
       {
         userId,
@@ -127,7 +126,6 @@ export const processDailyEarnings = async () => {
     const { id, user_id, daily_earning, total_earning, status, end_date } = investment;
     if (status !== 'active') continue;
 
-    // EXPIRATION CHECK
     if (new Date() > new Date(end_date)) {
         await pool.query("UPDATE investments SET status = 'completed' WHERE id = $1", [id]);
         continue;
@@ -136,7 +134,6 @@ export const processDailyEarnings = async () => {
     const user = await findUserById(user_id);
     if (!user) continue;
 
-    // THE TRUTH: We use the daily_earning column exactly.
     const dailyYield = Number(daily_earning);
     const newBalance = Number(user.balance) + dailyYield;
     await updateUserBalance(user.id, newBalance);
@@ -161,9 +158,6 @@ export const getUserInvestments = async (userId) => {
   let totalDailyIncome = 0;
 
   const formattedInvestments = investments.map(inv => {
-    // REBUILD: Removed 'Winery Plan' fallback. 
-    // If the database has no name, it will be empty—this forces us to fix the DB 
-    // rather than showing a fake 'Chamdor' name.
     const displayName = inv.itemname || "Processing Asset...";
     const actualPrice = Number(inv.price || 0);
     const dailyValue = Number(inv.daily_earning || 0);
@@ -178,19 +172,14 @@ export const getUserInvestments = async (userId) => {
       id: inv.id,
       itemName: displayName, 
       itemname: displayName,
-      
       investmentAmount: actualPrice,      
       price: actualPrice,                
-      
       dailyYield: dailyValue,
       daily_earning: dailyValue,
-      
       totalAccumulated: Number(inv.total_earning) || 0,
       total_earning: Number(inv.total_earning) || 0,
-      
       daysLeft: daysRemaining,           
       days_left: daysRemaining,           
-      
       status: inv.status || 'active',
       start_date: inv.start_date
     };
@@ -205,4 +194,39 @@ export const getUserInvestments = async (userId) => {
   };
 };
 
-// ... Rest of the helper functions (getUserEarningsSummary, getRewardHistory) stay the same
+// ==========================================
+// 5. MISSING EXPORTS (FIXES RENDER CRASH)
+// ==========================================
+
+export const getUserEarningsSummary = async (userId) => {
+  try {
+    const investments = await getAllInvestmentsByUserId(userId);
+    let todayEarnings = 0;
+    let totalEarnings = 0;
+    
+    investments.forEach(inv => {
+      const daily = Number(inv.daily_earning) || 0;
+      if (inv.status === 'active') {
+        todayEarnings += daily;
+      }
+      totalEarnings += Number(inv.total_earning) || 0;
+    });
+    
+    return { today: todayEarnings, total: totalEarnings };
+  } catch (error) {
+    throw new Error(`Earnings Summary Error: ${error.message}`);
+  }
+};
+
+export const getRewardHistory = async (userId) => {
+  try {
+    const rewards = await getInvestmentEarningsHistory(userId);
+    const summary = {
+      total_rewards: rewards.reduce((sum, r) => sum + Number(r.daily_earning || 0), 0),
+      total_count: rewards.length
+    };
+    return { rewards, summary };
+  } catch (error) {
+    throw new Error(`Reward History Error: ${error.message}`);
+  }
+};
