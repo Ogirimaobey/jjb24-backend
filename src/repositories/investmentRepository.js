@@ -36,16 +36,16 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.end_date,
       i.status,
       
-      -- 1. STRICT NAME MAPPING: If it's not in items or VIP, it returns NULL (which we handle in the service)
+      -- STRICT NAME MAPPING
       COALESCE(cv.name, it.itemname) AS "itemname",
       
-      -- 2. STRICT PRICE MAPPING: Uses the actual amount recorded at purchase
+      -- STRICT PRICE MAPPING
       COALESCE(i.amount, i.price, 0) AS "price",
       
-      -- 3. STRICT YIELD MAPPING: Uses the fixed yield recorded in the investment row
+      -- STRICT YIELD MAPPING
       COALESCE(i.daily_earning, 0) AS "daily_earning",
       
-      -- 4. IMAGE MAPPING
+      -- IMAGE MAPPING
       CASE 
         WHEN i.caspervip_id IS NOT NULL THEN cv.image 
         ELSE it.itemimage 
@@ -54,12 +54,12 @@ export const getAllInvestmentsByUserId = async (userId) => {
       i.duration,
       i.total_earning,
       
-      -- 5. REAL-TIME COUNTDOWN
+      -- REAL-TIME COUNTDOWN
       GREATEST(0, EXTRACT(DAY FROM (i.end_date - CURRENT_TIMESTAMP))) AS "days_left"
 
     FROM investments i
     LEFT JOIN items it ON i.item_id = it.id
-    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
+    LEFT JOIN casper_vip cv ON i.casper_vip_id = cv.id
     WHERE i.user_id = $1 AND i.status = 'active'
     ORDER BY i.start_date DESC
   `;
@@ -102,7 +102,7 @@ export const getAllInvestmentsWithDetails = async () => {
     FROM investments i
     INNER JOIN users u ON i.user_id = u.id
     LEFT JOIN items it ON i.item_id = it.id
-    LEFT JOIN casper_vip cv ON i.caspervip_id = cv.id
+    LEFT JOIN casper_vip cv ON i.casper_vip_id = cv.id
     ORDER BY i.start_date DESC
   `;
   const { rows } = await pool.query(query);
@@ -118,4 +118,26 @@ export const getTotalAmountInvested = async () => {
 export const getTotalInvestmentsCount = async () => {
   const { rows } = await pool.query("SELECT COUNT(*) as count FROM investments WHERE status = 'active'");
   return parseInt(rows[0].count);
+};
+
+/**
+ * FIX: Re-adding the missing export required by investmentService.js
+ */
+export const getInvestmentEarningsHistory = async (userId) => {
+  const query = `
+    SELECT 
+      i.id,
+      i.start_date AS "date",
+      i.daily_earning,
+      i.total_earning,
+      COALESCE(cv.name, it.itemname, 'Investment') AS "source_name",
+      'investment_roi' AS "reward_type"
+    FROM investments i
+    LEFT JOIN items it ON i.item_id = it.id
+    LEFT JOIN casper_vip cv ON i.casper_vip_id = cv.id
+    WHERE i.user_id = $1
+    ORDER BY i.start_date DESC
+  `;
+  const { rows } = await pool.query(query, [userId]);
+  return rows;
 };
