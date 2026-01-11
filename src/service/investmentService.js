@@ -36,7 +36,8 @@ export const createInvestment = async (userId, itemId) => {
         casperVipId: null,        
         dailyEarning: Number(item.dailyincome),
         totalEarning: 0,
-        duration: item.duration || 35,
+        // FIX: Ensure duration is forced to a Number to prevent DB type errors
+        duration: Number(item.duration) || 35,
         price: itemPrice, 
         status: 'active' 
       },
@@ -90,7 +91,8 @@ export const createVipInvestment = async (userId, vipId) => {
         casperVipId: vip.id,        
         dailyEarning: Number(vip.daily_earnings),
         totalEarning: 0,
-        duration: vip.duration_days || 30,
+        // FIX: Ensure duration is forced to a Number
+        duration: Number(vip.duration_days) || 30,
         price: vipPrice, 
         status: 'active'
       },
